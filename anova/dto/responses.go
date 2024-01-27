@@ -1,209 +1,36 @@
-package main
+package dto
 
 import (
-	"encoding/json"
-	"math"
 	"reflect"
-	_ "reflect"
 	"time"
 )
 
-type MessageType string
-
-type RequestID string
-
 var (
-	messageTypeToResponseType = map[MessageType]reflect.Type{
-		"EVENT_APO_WIFI_LIST": reflect.TypeOf(&EventApoWifiList{}).Elem(),
-		"EVENT_USER_STATE":    reflect.TypeOf(&EventUserState{}).Elem(),
-		"EVENT_APO_STATE":     reflect.TypeOf(&EventApoState{}).Elem(),
-		"RESPONSE":            reflect.TypeOf(&Response{}).Elem(),
+	MessageTypeToResponseType = map[MessageType]reflect.Type{
+		"EVENT_APO_WIFI_LIST":            reflect.TypeOf(&WifiListEvent{}).Elem(),
+		"EVENT_APO_WIFI_ADDED":           reflect.TypeOf(&WifiAddedEvent{}).Elem(),
+		"EVENT_APO_WIFI_REMOVED":         reflect.TypeOf(&WifiRemovedEvent{}).Elem(),
+		"EVENT_APO_WIFI_FIRMWARE_UPDATE": reflect.TypeOf(&WifiFirmwareUpdateEvent{}).Elem(),
+		"EVENT_USER_STATE":               reflect.TypeOf(&UserStateEvent{}).Elem(),
+		"EVENT_APO_STATE":                reflect.TypeOf(&ApoStateEvent{}).Elem(),
+		"RESPONSE":                       reflect.TypeOf(&Response{}).Elem(),
 	}
 )
-
-var (
-	requestTypeToMessageType = map[reflect.Type]MessageType{
-		reflect.TypeOf(&SetFanCommand{}).Elem():              "",
-		reflect.TypeOf(&SetHeatingElementsCommand{}).Elem():  "",
-		reflect.TypeOf(&SetLampCommand{}).Elem():             "CMD_APO_SET_LAMP",
-		reflect.TypeOf(&SetLampPreferenceCommand{}).Elem():   "",
-		reflect.TypeOf(&SetProbeCommand{}).Elem():            "",
-		reflect.TypeOf(&SetSteamGeneratorsCommand{}).Elem():  "",
-		reflect.TypeOf(&SetTemperatureBulbsCommand{}).Elem(): "",
-		reflect.TypeOf(&SetTemperatureUnitCommand{}).Elem():  "",
-		reflect.TypeOf(&SetTimerCommand{}).Elem():            "",
-		reflect.TypeOf(&SetVentCommand{}).Elem():             "",
-		reflect.TypeOf(&StartCookCommand{}).Elem():           "",
-		reflect.TypeOf(&StartDescaleCommand{}).Elem():        "",
-		reflect.TypeOf(&AbortDescaleCommand{}).Elem():        "",
-		reflect.TypeOf(&StartFirmwareUpdateCommand{}).Elem(): "",
-		reflect.TypeOf(&StartStageCommand{}).Elem():          "",
-		reflect.TypeOf(&StopCookCommand{}).Elem():            "",
-		reflect.TypeOf(&UpdateCookStageCommand{}).Elem():     "",
-		reflect.TypeOf(&UpdateCookStagesCommand{}).Elem():    "",
-		reflect.TypeOf(&UpdateCookStagesV1Command{}).Elem():  "",
-		reflect.TypeOf(&SetReportStateRate{}).Elem():         "",
-		reflect.TypeOf(&SetReportStateRateDefault{}).Elem():  "",
-		reflect.TypeOf(&SetBoilerTime{}).Elem():              "CMD_APO_SET_BOILER_TIME",
-		reflect.TypeOf(&AuthTokenV2{}).Elem():                "",
-		reflect.TypeOf(&HealthCheck{}).Elem():                "",
-		reflect.TypeOf(&SetMetadataCommand{}).Elem():         "CMD_APO_SET_METADATA",
-		reflect.TypeOf(&GetConfiguration{}).Elem():           "",
-		reflect.TypeOf(&SetConfiguration{}).Elem():           "",
-		reflect.TypeOf(&NameWifiDeviceCommand{}).Elem():      "CMD_APO_NAME_WIFI_DEVICE",
-		reflect.TypeOf(&DisconnectCommand{}).Elem():          "",
-		reflect.TypeOf(&RequestDiagnosticsCommand{}).Elem():  "",
-		reflect.TypeOf(&RegisterPushTokenCommand{}).Elem():   "",
-		reflect.TypeOf(&SetTimeZoneCommand{}).Elem():         "",
-		reflect.TypeOf(&StartLiveStreamCommand{}).Elem():     "",
-		reflect.TypeOf(&StopLiveStreamCommand{}).Elem():      "",
-	}
-)
-
-// A Message is an envelope used for all communications to and from the
-// WebSocket server.
-type Message struct {
-	// Unique ID used for request-response messages. Empty for events.
-	RequestID *RequestID  `json:"requestId,omitempty"`
-	Command   MessageType `json:"command"`
-	Payload   interface{} `json:"payload"`
-}
-
-// RawMessage is a copy of Message, but with a string payload to prevent
-// the entire payload from being unmarshalled.
-type RawMessage struct {
-	RequestID *RequestID      `json:"requestId,omitempty"`
-	Command   MessageType     `json:"command"`
-	Payload   json.RawMessage `json:"payload"`
-}
-
-/*
- * Request objects (sent to server)
- */
 
 type CookerID string
 
-type Command struct {
-	ID      CookerID    `json:"id"`
-	Type    MessageType `json:"type"`
-	Payload interface{} `json:"payload"`
-}
+type CookerType string
 
-type SetFanCommand struct {
-}
-
-type SetHeatingElementsCommand struct {
-}
-
-type SetLampCommand struct {
-	On bool `json:"on"`
-}
-
-type SetLampPreferenceCommand struct {
-}
-
-type SetProbeCommand struct {
-}
-
-type SetSteamGeneratorsCommand struct {
-}
-
-type SetTemperatureBulbsCommand struct {
-}
-
-type SetTemperatureUnitCommand struct {
-}
-
-type SetTimerCommand struct {
-}
-
-type SetVentCommand struct {
-}
-
-type StartCookCommand struct {
-}
-
-type StartDescaleCommand struct {
-}
-
-type AbortDescaleCommand struct {
-}
-
-type StartFirmwareUpdateCommand struct {
-}
-
-type StartStageCommand struct {
-}
-
-type StopCookCommand struct {
-}
-
-type UpdateCookStageCommand struct {
-}
-
-type UpdateCookStagesCommand struct {
-}
-
-type UpdateCookStagesV1Command struct {
-}
-
-type SetReportStateRate struct {
-}
-
-type SetReportStateRateDefault struct {
-}
-
-type SetBoilerTime struct {
-	Time int `json:"time"`
-}
-
-type AuthTokenV2 struct {
-}
-
-type HealthCheck struct {
-}
-
-type SetMetadataCommand struct {
-	Metadata map[string]interface{} `json:"metadata"`
-}
-
-type GetConfiguration struct {
-}
-
-type SetConfiguration struct {
-}
-
-type NameWifiDeviceCommand struct {
-	Name string `json:"name"`
-}
-
-type DisconnectCommand struct {
-}
-
-type RequestDiagnosticsCommand struct {
-}
-
-type RegisterPushTokenCommand struct {
-}
-
-type SetTimeZoneCommand struct {
-}
-
-type StartLiveStreamCommand struct {
-}
-
-type StopLiveStreamCommand struct {
-}
-
-/*
- * Response objects (received from server)
- */
+const (
+	CookerTypeOvenV1 = "oven_v1"
+	CookerTypeOvenV2 = "oven_v2"
+)
 
 // Only implemented for "oven_v1"
 // TODO Implement "oven_v2" structures
-type EventApoState struct {
+type ApoStateEvent struct {
 	CookerID CookerID    `json:"cookerId"`
-	Type     string      `json:"type"`
+	Type     CookerType  `json:"type"`
 	State    OvenStateV1 `json:"state"`
 }
 
@@ -219,14 +46,26 @@ type Response struct {
 	Error  *string        `json:"error,omitempty"`
 }
 
-type EventApoWifiList []struct {
-	CookerID CookerID `json:"cookerId"`
-	Name     string   `json:"name"`
-	PairedAt string   `json:"pairedAt"`
-	Type     string   `json:"type"`
+type WifiAddedEvent struct {
+	CookerID CookerID `json:"cooker_id"`
 }
 
-type EventUserState struct {
+type WifiRemovedEvent struct {
+	//TODO
+}
+
+type WifiFirmwareUpdateEvent struct {
+	//TODO
+}
+
+type WifiListEvent []struct {
+	CookerID CookerID   `json:"cookerId"`
+	Name     string     `json:"name"`
+	PairedAt string     `json:"pairedAt"`
+	Type     CookerType `json:"type"`
+}
+
+type UserStateEvent struct {
 	IsConnectedToAlexa      bool `json:"isConnectedToAlexa"`
 	IsConnectedToGoogleHome bool `json:"isConnectedToGoogleHome"`
 }
@@ -399,20 +238,6 @@ type SteamGeneratorsNode struct {
 
 	Evaporator EvaporatorSteamGeneratorNode `json:"evaporator"`
 	Boiler     BoilerSteamGeneratorNode     `json:"boiler"`
-}
-
-type Temperature struct {
-	Celsius    float64 `json:"celsius"`
-	Fahrenheit float64 `json:"fahrenheit"`
-}
-
-func TemperatureFromCelsius(celsius float64) Temperature {
-	// The app uses Celsius, then calculates the Fahrenheit value. It's unclear
-	// what would happen if these values diverged from each other.
-	return Temperature{
-		Celsius:    celsius,
-		Fahrenheit: math.Round(1.8*celsius + 32),
-	}
 }
 
 type TemperatureBulbsMode string

@@ -1,4 +1,4 @@
-module apo-cli
+module go-apo
 
 go 1.21
 

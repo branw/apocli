@@ -38,7 +38,7 @@ To build and run (this isn't very useful yet):
 
 ```
 go build
-ANOVA_REFRESH_TOKEN="<your-refresh-token-here>" ANOVA_COOKER_ID="<your-cooker-id-here>" ./apo-cli
+ANOVA_REFRESH_TOKEN="<your-refresh-token-here>" ANOVA_COOKER_ID="<your-cooker-id-here>" ./go-apo
 ```
 
 ## 📜 License
@@ -133,13 +133,13 @@ app and website:
 | Type                                                                | Description |
 |---------------------------------------------------------------------|-------------|
 | `AUTH_TOKEN_V2`                                                     |             |
+| `CMD_APO_HEALTHCHECK`                                               |             |
 | `CMD_APO_DISCONNECT`                                                |             |
 | `CMD_APO_REGISTER_PUSH_TOKEN`                                       |             |
 | `CMD_APO_NAME_WIFI_DEVICE`                                          |             |
 | `CMD_APO_OTA`/`startFirmwareUpdate`                                 |             |
 | `CMD_APO_GET_CONFIGURATION`/`getConfiguration`                      |             |
 | `CMD_APO_SET_CONFIGURATION`/`setConfiguration`                      |             |
-| `CMD_APO_HEALTHCHECK`                                               |             |
 | `CMD_APO_REQUEST_DIAGNOSTIC`/`requestDiagnostic`                    |             |
 | `CMD_APO_SET_BOILER_TIME`/`setBoilerTime`                           |             |
 | `CMD_APO_SET_FAN`/`setFan`                                          |             |
