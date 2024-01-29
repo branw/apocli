@@ -2,16 +2,23 @@ package anova
 
 import (
 	"errors"
+	"fmt"
 	"github.com/r3labs/diff/v3"
 	"go-apo/anova/dto"
-	"log"
+	"log/slog"
 	"reflect"
 	"strings"
 )
 
+type User struct {
+	ConnectedToAlexa      bool
+	ConnectedToGoogleHome bool
+}
+
 // Service wraps a Client and provides a streamlined state and interface for
 // interacting with connected ovens.
 type Service struct {
+	User  *User
 	Ovens map[CookerID]*Oven
 
 	client *Client
@@ -21,6 +28,7 @@ type Service struct {
 
 func NewService(client *Client) *Service {
 	service := &Service{
+		User:  nil,
 		Ovens: make(map[CookerID]*Oven),
 
 		client: client,
@@ -46,28 +54,45 @@ func (service *Service) receiveMessages() {
 		if err != nil {
 			if errors.Is(err, ErrClosedConnection{}) {
 				service.events <- ServiceStopped{}
-				break
+				return
 			}
 
-			log.Printf("read error: %s\n", err)
+			slog.Error("failed to read message from client", err)
 			continue
 		}
 
 		switch payload := message.Payload.(type) {
+		// Account properties
+		case *dto.UserStateEvent:
+			newUser := User{
+				ConnectedToAlexa:      payload.IsConnectedToAlexa,
+				ConnectedToGoogleHome: payload.IsConnectedToGoogleHome,
+			}
+
+			service.User = &newUser
+
 		// New device was paired with the account
 		case *dto.WifiAddedEvent:
 			// We will process the device when we receive the updated
 			// WifiListEvent
-			log.Printf("new wifi device added with ID \"%s\"\n", payload.CookerID)
+			slog.Debug("new wifi device added",
+				"cookerID", payload.CookerID)
 
 		// List of devices paired with the account
 		case *dto.WifiListEvent:
 			for _, oven := range *payload {
 				cookerID := CookerID(oven.CookerID)
 				if existingOven, exists := service.Ovens[cookerID]; exists {
-					if oven.Name != existingOven.Name || oven.Type != existingOven.Type {
-						log.Printf("oven appeared with a different name/type\nprevious: %+v\nnew: %+v\n",
-							existingOven, oven)
+					if oven.Name != existingOven.Name {
+						oldName := existingOven.Name
+						existingOven.Name = oven.Name
+						service.events <- OvenRenamed{Oven: existingOven, OldName: oldName}
+					}
+
+					if oven.Type != existingOven.Type {
+						slog.Warn("oven appeared with a different type",
+							"previousOven", existingOven,
+							"newOven", oven)
 					}
 				} else {
 					// Create an oven object, but defer sending an event until
@@ -89,17 +114,20 @@ func (service *Service) receiveMessages() {
 
 			oven, exists := service.Ovens[cookerID]
 			if !exists {
-				log.Printf("received state for non-existent oven with ID \"%s\"\n", cookerID)
+				slog.Error("received state for unknown oven",
+					"cookerID", cookerID)
 				continue
 			}
 
 			if oven.Type != payload.Type {
-				log.Printf("oven has different type in latest state. previous: %s. new: %s.\n",
-					oven.Type, payload.Type)
+				slog.Warn("oven has different type in latest state",
+					"previousOvenType", oven.Type,
+					"newOvenType", payload.Type)
 			}
 
 			previousState := oven.State
 			oven.State = &state
+			oven.LastUpdate = state.UpdatedTimestamp
 
 			if previousState != nil {
 				diffFilter := diff.Filter(func(path []string, parent reflect.Type, field reflect.StructField) bool {
@@ -108,9 +136,9 @@ func (service *Service) receiveMessages() {
 				})
 				changelog, err := diff.Diff(*previousState, state, diffFilter)
 				if err != nil {
-					log.Printf("diffing oven states failed: %s\n", err)
+					slog.Error("diffing oven states failed", err)
 				} else {
-					log.Printf("found %d differences in oven state\n", len(changelog))
+					slog.Debug(fmt.Sprintf("found %d differences in oven state", len(changelog)))
 					for i, change := range changelog {
 						fromValue := change.From
 						if fromValue != nil && reflect.TypeOf(fromValue).Kind() == reflect.Pointer {
@@ -120,8 +148,8 @@ func (service *Service) receiveMessages() {
 						if toValue != nil && reflect.TypeOf(toValue).Kind() == reflect.Pointer {
 							toValue = reflect.ValueOf(toValue).Elem()
 						}
-						log.Printf("change %d: %s %v %+v -> %+v\n",
-							i+1, change.Type, strings.Join(change.Path, "."), fromValue, toValue)
+						slog.Debug(fmt.Sprintf("change %d: %s %v %+v -> %+v",
+							i+1, change.Type, strings.Join(change.Path, "."), fromValue, toValue))
 					}
 				}
 
@@ -133,7 +161,9 @@ func (service *Service) receiveMessages() {
 			}
 
 		default:
-			log.Printf("skipping message %s: %+v\n", reflect.TypeOf(payload), payload)
+			slog.Warn("skipping message",
+				"payloadType", reflect.TypeOf(payload),
+				"payload", payload)
 		}
 	}
 }

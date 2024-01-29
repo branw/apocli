@@ -1,16 +1,27 @@
 package main
 
 import (
-	_ "embed"
 	"errors"
+	"github.com/lmittmann/tint"
+	"github.com/mattn/go-isatty"
 	"go-apo/anova"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"reflect"
+	"time"
 )
 
 func run() error {
+	w := os.Stdout
+	opts := &tint.Options{
+		Level:      slog.LevelDebug,
+		TimeFormat: time.DateTime,
+		NoColor:    !isatty.IsTerminal(w.Fd()),
+	}
+	logger := slog.New(tint.NewHandler(w, opts))
+	slog.SetDefault(logger)
+
 	refreshToken := os.Getenv("ANOVA_REFRESH_TOKEN")
 	if refreshToken == "" {
 		return errors.New("missing ANOVA_REFRESH_TOKEN")
@@ -20,13 +31,12 @@ func run() error {
 		return errors.New("missing ANOVA_COOKER_ID")
 	}
 
-	client, err := anova.NewAnovaClient(refreshToken, anova.OptionPrintMessageTraces)
+	client, err := anova.NewClient(refreshToken, anova.OptionPrintMessageTraces)
 	if err != nil {
 		return err
 	}
 
 	defer client.Close()
-
 	service := anova.NewService(client)
 
 	interrupt := make(chan os.Signal, 1)
@@ -40,7 +50,7 @@ func run() error {
 			switch event.(type) {
 			case anova.ServiceStopped:
 				stop <- true
-				break
+				return
 			default:
 				events <- event
 			}
@@ -58,22 +68,39 @@ loop:
 		case event := <-events:
 			switch event := event.(type) {
 			case anova.OvenAdded:
-				log.Printf("oven added: %s\n", event.Oven.CookerID)
+				slog.Info("oven added",
+					slog.Any("cookerID", event.Oven.CookerID))
+
+				go func() {
+					code, err := event.Oven.GeneratePairingCode()
+					if err != nil {
+						slog.Error("generate code failed",
+							slog.Any("err", err))
+					} else {
+						slog.Info("generated pairing code",
+							slog.String("pairingCode", code))
+					}
+				}()
 
 			case anova.OvenUpdated:
-				log.Printf("oven updated: %s\n", event.Oven.CookerID)
+				slog.Info("oven updated",
+					slog.Any("cookerID", event.Oven.CookerID))
 
 			default:
-				log.Printf("ignoring event %s\n", reflect.TypeOf(event))
+				slog.Debug("ignoring event",
+					slog.Any("eventType", reflect.TypeOf(event)))
 			}
 		}
 	}
+
+	slog.Info("shutting down")
 
 	return nil
 }
 
 func main() {
 	if err := run(); err != nil {
-		log.Fatalln("error:", err)
+		slog.Error("fatal error",
+			slog.Any("err", err))
 	}
 }

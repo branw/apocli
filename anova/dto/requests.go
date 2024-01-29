@@ -42,6 +42,9 @@ var (
 
 		reflect.TypeOf(&StartLiveStreamCommand{}).Elem(): "CMD_APO_START_LIVE_STREAM",
 		reflect.TypeOf(&StopLiveStreamCommand{}).Elem():  "CMD_APO_STOP_LIVE_STREAM",
+
+		reflect.TypeOf(&GenerateNewPairingCode{}).Elem(): "CMD_GENERATE_NEW_PAIRING",
+		reflect.TypeOf(&AddUserWithPairingCode{}).Elem(): "CMD_ADD_USER_WITH_PAIRING",
 	}
 )
 
@@ -181,4 +184,11 @@ type StartLiveStreamCommand struct {
 
 type StopLiveStreamCommand struct {
 	//TODO
+}
+
+type GenerateNewPairingCode struct{}
+
+type AddUserWithPairingCode struct {
+	// JWT returned by GenerateNewPairingCode
+	Data string `json:"data"`
 }

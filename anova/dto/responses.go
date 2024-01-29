@@ -43,6 +43,7 @@ const (
 
 type Response struct {
 	Status ResponseStatus `json:"status"`
+	Data   *string        `json:"data,omitempty"`
 	Error  *string        `json:"error,omitempty"`
 }
 

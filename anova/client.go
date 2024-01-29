@@ -10,7 +10,7 @@ import (
 	"github.com/xeipuuv/gojsonschema"
 	"go-apo/anova/dto"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -27,13 +27,19 @@ const (
 	AnovaDevicesUserAgent            = "okhttp/4.9.2"
 )
 
+const (
+	RequestAcknowledgementTimeout = 5 * time.Second
+)
+
 type Client struct {
 	conn               *websocket.Conn
 	printMessageTraces bool
 
-	stop chan bool
+	stop    chan bool
+	stopped bool
 
-	inboundMessages chan dto.Message
+	inboundMessages  chan dto.Message
+	requestResponses map[dto.RequestID]chan dto.Response
 }
 
 func OptionPrintMessageTraces(client *Client) error {
@@ -41,7 +47,7 @@ func OptionPrintMessageTraces(client *Client) error {
 	return nil
 }
 
-func NewAnovaClient(firebaseRefreshToken string, options ...func(*Client) error) (client *Client, err error) {
+func NewClient(firebaseRefreshToken string, options ...func(*Client) error) (client *Client, err error) {
 	// Grab an ID token from Firebase Auth
 	//TODO we probably need to save the refresh token in order to re-auth
 	// if our WebSocket connection dies after more than an hour
@@ -56,9 +62,11 @@ func NewAnovaClient(firebaseRefreshToken string, options ...func(*Client) error)
 		conn:               conn,
 		printMessageTraces: false,
 
-		stop: make(chan bool),
+		stop:    make(chan bool),
+		stopped: false,
 
-		inboundMessages: make(chan dto.Message),
+		inboundMessages:  make(chan dto.Message, 100),
+		requestResponses: make(map[dto.RequestID]chan dto.Response),
 	}
 
 	// Apply all options
@@ -75,12 +83,17 @@ func NewAnovaClient(firebaseRefreshToken string, options ...func(*Client) error)
 }
 
 func (client *Client) Close() {
+	if client.stopped {
+		return
+	}
+
 	client.stop <- true
+	client.stopped = true
 
 	err := client.conn.WriteMessage(websocket.CloseMessage,
 		websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 	if err != nil {
-		log.Printf("error on write close: %s\n", err)
+		slog.Error("failed to write close message", slog.Any("err", err))
 		return
 	}
 
@@ -93,7 +106,7 @@ func (client *Client) SetLamp(cookerID CookerID, on bool) error {
 	command := dto.SetLampCommand{
 		On: on,
 	}
-	_, err := client.SendCommand(cookerID, command)
+	_, _, err := client.SendCommand(cookerID, command)
 	return err
 }
 
@@ -102,7 +115,7 @@ func (client *Client) SetLampPreference(cookerID CookerID, on bool) error {
 	command := dto.SetLampPreferenceCommand{
 		On: on,
 	}
-	_, err := client.SendCommand(cookerID, command)
+	_, _, err := client.SendCommand(cookerID, command)
 	return err
 }
 
@@ -112,13 +125,13 @@ func (client *Client) SetProbe(cookerID CookerID, setpointCelsius float64) error
 	command := dto.SetProbeCommand{
 		Setpoint: dto.TemperatureFromCelsius(setpointCelsius),
 	}
-	_, err := client.SendCommand(cookerID, command)
+	_, _, err := client.SendCommand(cookerID, command)
 	return err
 }
 
 func (client *Client) StartCook(cookerID CookerID) error {
 	command := dto.StartCookCommand{}
-	_, err := client.SendCommand(cookerID, command)
+	_, _, err := client.SendCommand(cookerID, command)
 	return err
 }
 
@@ -127,15 +140,68 @@ func (client *Client) StartCook(cookerID CookerID) error {
 // no other accounts are paired with the oven.
 func (client *Client) DisconnectOvenFromAccount(cookerID CookerID) error {
 	command := dto.DisconnectCommand{}
-	_, err := client.SendCommand(cookerID, command)
+	_, _, err := client.SendCommand(cookerID, command)
 	return err
 }
 
-func (client *Client) SendCommand(cookerID CookerID, payload interface{}) (requestID dto.RequestID, err error) {
+func (client *Client) SetName(cookerID CookerID, name string) error {
+	command := dto.NameWifiDeviceCommand{
+		Name: name,
+	}
+	_, _, err := client.SendCommand(cookerID, command)
+	return err
+}
+
+// GeneratePairingCode sends a command to generate a new pairing code for an
+// oven. The pairing code is a 24-hour-long JWT that can be used from another
+// account via AddUserWithPairingCode.
+func (client *Client) GeneratePairingCode(cookerID CookerID) (pairingCode string, err error) {
+	command := dto.GenerateNewPairingCode{}
+	_, data, err := client.SendCommand(cookerID, command)
+	if err != nil {
+		return "", err
+	} else if data == nil {
+		return "", errors.New("command returned no data")
+	}
+	return *data, nil
+}
+
+func (client *Client) AddUserWithPairingCode(pairingCode string) error {
+	command := dto.AddUserWithPairingCode{
+		Data: pairingCode,
+	}
+	// Intentionally no cooker ID -- the oven isn't accessible from this account yet
+	_, _, err := client.SendCommand("", command)
+	return err
+}
+
+// ErrRequestNotAcknowledged indicates that we did not receive a response for a
+// command request. This can happen if there are networking issues, and also if
+// the command was sent to a nonexistent cooker ID.
+type ErrRequestNotAcknowledged struct {
+	RequestID dto.RequestID
+}
+
+func (e ErrRequestNotAcknowledged) Error() string {
+	return fmt.Sprintf("request \"%s\" was not acknowledged", e.RequestID)
+}
+
+// ErrRequestFailed indicates that a request command returned an error or other
+// unsuccessful response.
+type ErrRequestFailed struct {
+	RequestID    dto.RequestID
+	ErrorMessage string
+}
+
+func (e ErrRequestFailed) Error() string {
+	return fmt.Sprintf("request \"%s\" failed with error: %s\n", e.RequestID, e.ErrorMessage)
+}
+
+func (client *Client) SendCommand(cookerID CookerID, payload interface{}) (requestID dto.RequestID, data *string, err error) {
 	payloadType := reflect.TypeOf(payload)
 	messageType := dto.RequestTypeToMessageType[payloadType]
 	if messageType == "" {
-		return "", errors.New(fmt.Sprintf("missing message type for payload %s", payloadType))
+		return "", nil, errors.New(fmt.Sprintf("missing message type for payload %s", payloadType))
 	}
 
 	requestID = dto.RequestID(uuid.New().String())
@@ -153,57 +219,86 @@ func (client *Client) SendCommand(cookerID CookerID, payload interface{}) (reque
 
 	// Validate the entire command using the JSON Schema
 	jsonLoader := gojsonschema.NewGoLoader(message)
-	result, err := dto.OvenCommandSchema.Validate(jsonLoader)
+	commandResult, err := dto.OvenCommandSchema.Validate(jsonLoader)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
-	if !result.Valid() {
-		fmt.Printf("the command payload is not valid:\n")
-		for _, desc := range result.Errors() {
-			fmt.Printf("- %s\n", desc)
-		}
-		return "", errors.New("invalid payload")
+	multiUserResult, err := dto.MultiUserCommandSchema.Validate(jsonLoader)
+	if err != nil {
+		return "", nil, err
+	}
+	if !commandResult.Valid() && !multiUserResult.Valid() {
+		slog.Error("outbound message payload is not valid",
+			slog.Any("commandValidationErrors", commandResult.Errors()),
+			slog.Any("multiUserValidationErrors", multiUserResult.Errors()))
+		return "", nil, errors.New("invalid payload")
 	}
 
 	buf, err := json.Marshal(message)
 	if err != nil {
-		log.Printf("marshal error for message: %+v\n", message)
-		return "", errors.New("failed to marshal message")
+		slog.Error("JSON marshal error for message",
+			slog.Any("err", err),
+			"message", message)
+		return "", nil, errors.New("failed to marshal message")
 	}
 
 	if client.printMessageTraces {
-		log.Printf("send: %s\n", buf)
+		slog.Debug("send",
+			slog.String("buf", string(buf)))
 	}
+
+	client.requestResponses[requestID] = make(chan dto.Response, 1)
+	defer delete(client.requestResponses, requestID)
 
 	err = client.conn.WriteMessage(websocket.TextMessage, buf)
 	if err != nil {
-		log.Printf("send error \"%s\" for buffer \"%s\"\n", err, buf)
-		return "", errors.New("failed to send message")
+		slog.Error("failed to write message",
+			slog.Any("err", err),
+			"buffer", buf)
+		return "", nil, errors.New("failed to send message")
 	}
 
-	return requestID, nil
+	// Block until we receive an acknowledgement
+	select {
+	case response := <-client.requestResponses[requestID]:
+		if response.Status == dto.ResponseStatusOk {
+			return requestID, response.Data, nil
+		}
+
+		var errorMessage string
+		if response.Error != nil {
+			errorMessage = *response.Error
+		} else {
+			errorMessage = "(unknown error)"
+		}
+		return "", nil, ErrRequestFailed{RequestID: requestID, ErrorMessage: errorMessage}
+
+	case <-time.After(RequestAcknowledgementTimeout):
+		return "", nil, ErrRequestNotAcknowledged{RequestID: requestID}
+	}
 }
 
 func (client *Client) receiveMessages() {
 	for {
-		select {
-		case <-client.stop:
-			break
-		default:
+		if client.stopped {
+			return
 		}
 
 		_, message, err := client.conn.ReadMessage()
 		if err != nil {
 			if errors.Is(err, websocket.ErrCloseSent) {
-				break
+				return
 			}
 
-			log.Printf("read failed: %s\n", err)
+			slog.Error("failed to read from websocket",
+				slog.Any("err", err))
+			client.Close()
 			return
 		}
 
 		if client.printMessageTraces {
-			log.Printf("recv: %s\n", message)
+			slog.Debug("recv",
+				slog.String("message", string(message)))
 		}
 
 		// Decode the first layer of the message
@@ -212,7 +307,8 @@ func (client *Client) receiveMessages() {
 		var rawMessage dto.RawMessage
 		err = dec.Decode(&rawMessage)
 		if err != nil {
-			log.Printf("error parsing JSON: %v\n", err)
+			slog.Error("error parsing JSON",
+				slog.Any("err", err))
 			continue
 		}
 
@@ -224,7 +320,10 @@ func (client *Client) receiveMessages() {
 			decodedPayload := reflect.New(messageType).Interface()
 			err = dec.Decode(decodedPayload)
 			if err != nil {
-				log.Printf("error parsing payload JSON for \"%s\": %v\npayload: %s\n", rawMessage.Command, err, message)
+				slog.Error("error parsing payload JSON",
+					slog.Any("err", err),
+					"command", rawMessage.Command,
+					"message", message)
 				continue
 			}
 
@@ -234,23 +333,39 @@ func (client *Client) receiveMessages() {
 				Payload:   decodedPayload,
 			}
 
-			// We only have a JSON Schema for EVENT_APO_STATE, so we can at
-			// least perform a soft validation for those messages
 			switch payload := decodedPayload.(type) {
+			case *dto.Response:
+				if decodedMessage.RequestID == nil {
+					slog.Warn("received response with no request ID; ignoring")
+					break
+				}
+
+				// Unblock the synchronous message sender
+				requestID := *decodedMessage.RequestID
+				ch, exists := client.requestResponses[requestID]
+				if !exists {
+					slog.Warn("received response for unknown request ID",
+						"requestID", requestID)
+					break
+				}
+				ch <- *payload
+
 			case *dto.ApoStateEvent:
+				// We only have a JSON Schema for EVENT_APO_STATE, so we can at
+				// least perform a soft validation for those messages
 				jsonLoader := gojsonschema.NewGoLoader(payload.State)
 				result, err := dto.OvenStateSchema.Validate(jsonLoader)
 				if err == nil && !result.Valid() {
-					log.Printf("the oven state is not valid:\n")
-					for _, desc := range result.Errors() {
-						log.Printf("- %s\n", desc)
-					}
+					slog.Warn("the oven state is not valid",
+						slog.Any("errors", result.Errors()))
 				}
 			}
 
 			client.inboundMessages <- decodedMessage
 		} else {
-			log.Printf("error: unmapped message type \"%s\": %+v\n", rawMessage.Command, message)
+			slog.Error("unmapped message type",
+				"command", rawMessage.Command,
+				"message", message)
 		}
 	}
 }
@@ -293,9 +408,10 @@ func getFirebaseIdToken(refreshToken string) (string, error) {
 	}
 
 	defer func(Body io.ReadCloser) {
-		err := Body.Close()
+		err = Body.Close()
 		if err != nil {
-			log.Printf("close failed: %s\n", err)
+			slog.Error("failed to close token connection",
+				slog.Any("err", err))
 		}
 	}(rsp.Body)
 	body, err := io.ReadAll(rsp.Body)
