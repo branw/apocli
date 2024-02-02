@@ -162,8 +162,9 @@ func (service *Service) receiveMessages() {
 
 		default:
 			slog.Warn("skipping message",
-				"payloadType", reflect.TypeOf(payload),
-				"payload", payload)
+				slog.Any("requestID", message.RequestID),
+				slog.Any("payloadType", reflect.TypeOf(payload)),
+				slog.Any("payload", payload))
 		}
 	}
 }

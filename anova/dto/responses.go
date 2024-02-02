@@ -71,32 +71,18 @@ type UserStateEvent struct {
 	IsConnectedToGoogleHome bool `json:"isConnectedToGoogleHome"`
 }
 
-type StageType string
-
-const (
-	StageTypePreheat StageType = "preheat"
-	StageTypeCook    StageType = "cook"
-	StageTypeStop    StageType = "stop"
-)
-
-type StageTimer struct {
-	Initial int `json:"initial"`
-}
-
 type StageFan struct {
 	Speed int `json:"speed"`
 }
 
+type HeatingElementSetting struct {
+	On bool `json:"on"`
+}
+
 type StageHeatingElements struct {
-	Bottom struct {
-		On bool `json:"on"`
-	} `json:"bottom"`
-	Rear struct {
-		On bool `json:"on"`
-	} `json:"rear"`
-	Top struct {
-		On bool `json:"on"`
-	} `json:"top"`
+	Bottom HeatingElementSetting `json:"bottom"`
+	Rear   HeatingElementSetting `json:"rear"`
+	Top    HeatingElementSetting `json:"top"`
 }
 
 type StageRackPosition int
@@ -109,27 +95,33 @@ const (
 	StageRackPosition5 StageRackPosition = 5
 )
 
+type RelativeHumiditySetting struct {
+	Setpoint int `json:"setpoint"`
+}
+
+type SteamPercentageSetting struct {
+	Setpoint int `json:"setpoint"`
+}
+
 // TODO Maybe merge with SteamGeneratorsNode?
 type StageSteamGenerators struct {
 	Mode SteamGeneratorMode `json:"mode"`
 
-	RelativeHumidity struct {
-		Setpoint int `json:"setpoint"`
-	} `json:"relativeHumidity,omitempty"`
+	// For StageRelativeHumiditySteamGenerator, wet mode
+	RelativeHumidity *RelativeHumiditySetting `json:"relativeHumidity,omitempty"`
+	// For StageSteamPercentageSteamGenerator, dry mode
+	SteamPercentage *SteamPercentageSetting `json:"steamPercentage,omitempty"`
+}
+
+// Replaces StageTemperatureProbe
+type TemperatureSetting struct {
+	Setpoint Temperature `json:"setpoint"`
 }
 
 type StageTemperatureBulbs struct {
 	Mode TemperatureBulbsMode `json:"mode"`
-	Dry  struct {
-		Setpoint Temperature `json:"setpoint"`
-	} `json:"dry,omitempty"`
-	Wet struct {
-		Setpoint Temperature `json:"setpoint"`
-	} `json:"wet,omitempty"`
-}
-
-type StageTemperatureProbe struct {
-	Setpoint Temperature `json:"setpoint"`
+	Dry  *TemperatureSetting  `json:"dry,omitempty"`
+	Wet  *TemperatureSetting  `json:"wet,omitempty"`
 }
 
 type StageVent struct {
@@ -153,7 +145,7 @@ type Stage struct {
 	SteamGenerators  *StageSteamGenerators  `json:"steamGenerators,omitempty"`
 	TemperatureBulbs *StageTemperatureBulbs `json:"temperatureBulbs,omitempty"`
 	ProbeAdded       *bool                  `json:"probeAdded,omitempty"`
-	TemperatureProbe *StageTemperatureProbe `json:"temperatureProbe,omitempty"`
+	TemperatureProbe *TemperatureSetting    `json:"temperatureProbe,omitempty"`
 	Vent             *StageVent             `json:"vent,omitempty"`
 
 	PhotoUrl          *string `json:"photoUrl,omitempty"`

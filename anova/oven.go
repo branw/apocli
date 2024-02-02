@@ -42,3 +42,31 @@ func (oven *Oven) DisconnectFromAccount() error {
 func (oven *Oven) GeneratePairingCode() (string, error) {
 	return oven.client.GeneratePairingCode(oven.CookerID)
 }
+
+func (oven *Oven) ListAccounts() (accountIDs []string, err error) {
+	return oven.client.ListUsersForDevice(oven.CookerID)
+}
+
+func (oven *Oven) StartCook(stages []*CookStage) error {
+	return oven.client.StartCook(oven.CookerID, stagesToDto(stages))
+}
+
+func (oven *Oven) UpdateCookStage(stage *CookStage) error {
+	// A bit of a lie, because we might actually need to update two stages
+	dtoStages := stagesToDto([]*CookStage{stage})
+	for _, dtoStage := range dtoStages {
+		err := oven.client.UpdateCookStage(oven.CookerID, dtoStage)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (oven *Oven) UpdateCookStages(stages []*CookStage) error {
+	return oven.client.UpdateCookStages(oven.CookerID, stagesToDto(stages))
+}
+
+func (oven *Oven) StopCook() error {
+	return oven.client.StopCook(oven.CookerID)
+}

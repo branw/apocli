@@ -37,3 +37,18 @@ func (OvenUpdated) isEvent() {}
 type ServiceStopped struct{}
 
 func (ServiceStopped) isEvent() {}
+
+type CookStarted struct {
+	Oven *Oven
+	Cook *Cook
+}
+
+type CookStopped struct {
+	Oven *Oven
+	Cook *Cook
+}
+
+type ActiveCookStageChanged struct {
+	Oven *Oven
+	Cook *Cook
+}

@@ -14,32 +14,40 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"sync"
 	"time"
 )
 
+// Anova-specific constants
 // From Android APK "com.anovaculinary.anovaoven" 1.1.7 (2023-12-09)
 const (
-	FirebaseAPIKey                   = "AIzaSyB0VNqmJVAeR1fn_NbqqhwSytyMOZ_JO9c"
-	AnovaDevicesEndpoint             = "wss://devices.anovaculinary.io/"
-	AnovaDevicesSupportedAccessories = "APO"
-	AnovaDevicesPlatform             = "android"
-	AnovaDevicesWebSocketProtocol    = "ANOVA_V2"
-	AnovaDevicesUserAgent            = "okhttp/4.9.2"
+	firebaseAPIKey                   = "AIzaSyB0VNqmJVAeR1fn_NbqqhwSytyMOZ_JO9c"
+	anovaDevicesEndpoint             = "wss://devices.anovaculinary.io/"
+	anovaDevicesSupportedAccessories = "APO"
+	anovaDevicesPlatform             = "android"
+	anovaDevicesWebSocketProtocol    = "ANOVA_V2"
+	anovaDevicesUserAgent            = "okhttp/4.9.2"
+	// cookIdPrefix is the prefix added to all cook IDs and stage IDs
+	cookIdPrefix = "android-"
 )
 
 const (
-	RequestAcknowledgementTimeout = 5 * time.Second
+	// requestAcknowledgementTimeout is the timeout to wait for a RESPONSE message
+	// after sending a request
+	requestAcknowledgementTimeout = 5 * time.Second
 )
 
 type Client struct {
-	conn               *websocket.Conn
+	conn      *websocket.Conn
+	connMutex sync.Mutex
+
 	printMessageTraces bool
 
 	stop    chan bool
 	stopped bool
 
 	inboundMessages  chan dto.Message
-	requestResponses map[dto.RequestID]chan dto.Response
+	requestResponses map[dto.RequestID]chan map[string]interface{}
 }
 
 func OptionPrintMessageTraces(client *Client) error {
@@ -59,14 +67,15 @@ func NewClient(firebaseRefreshToken string, options ...func(*Client) error) (cli
 	conn, err := connectWebsocket(firebaseIdToken)
 
 	client = &Client{
-		conn:               conn,
+		conn: conn,
+
 		printMessageTraces: false,
 
 		stop:    make(chan bool),
 		stopped: false,
 
 		inboundMessages:  make(chan dto.Message, 100),
-		requestResponses: make(map[dto.RequestID]chan dto.Response),
+		requestResponses: make(map[dto.RequestID]chan map[string]interface{}),
 	}
 
 	// Apply all options
@@ -102,79 +111,6 @@ func (client *Client) Close() {
 	}
 }
 
-func (client *Client) SetLamp(cookerID CookerID, on bool) error {
-	command := dto.SetLampCommand{
-		On: on,
-	}
-	_, _, err := client.SendCommand(cookerID, command)
-	return err
-}
-
-// SetLampPreference sends a command to set the oven's default lamp state.
-func (client *Client) SetLampPreference(cookerID CookerID, on bool) error {
-	command := dto.SetLampPreferenceCommand{
-		On: on,
-	}
-	_, _, err := client.SendCommand(cookerID, command)
-	return err
-}
-
-// SetProbe sends a command to adjust the setpoint temperature of the temperature
-// probe.
-func (client *Client) SetProbe(cookerID CookerID, setpointCelsius float64) error {
-	command := dto.SetProbeCommand{
-		Setpoint: dto.TemperatureFromCelsius(setpointCelsius),
-	}
-	_, _, err := client.SendCommand(cookerID, command)
-	return err
-}
-
-func (client *Client) StartCook(cookerID CookerID) error {
-	command := dto.StartCookCommand{}
-	_, _, err := client.SendCommand(cookerID, command)
-	return err
-}
-
-// DisconnectOvenFromAccount sends a command to remove the oven from the current
-// account. You will have to go through the Wi-Fi setup process all over again if
-// no other accounts are paired with the oven.
-func (client *Client) DisconnectOvenFromAccount(cookerID CookerID) error {
-	command := dto.DisconnectCommand{}
-	_, _, err := client.SendCommand(cookerID, command)
-	return err
-}
-
-func (client *Client) SetName(cookerID CookerID, name string) error {
-	command := dto.NameWifiDeviceCommand{
-		Name: name,
-	}
-	_, _, err := client.SendCommand(cookerID, command)
-	return err
-}
-
-// GeneratePairingCode sends a command to generate a new pairing code for an
-// oven. The pairing code is a 24-hour-long JWT that can be used from another
-// account via AddUserWithPairingCode.
-func (client *Client) GeneratePairingCode(cookerID CookerID) (pairingCode string, err error) {
-	command := dto.GenerateNewPairingCode{}
-	_, data, err := client.SendCommand(cookerID, command)
-	if err != nil {
-		return "", err
-	} else if data == nil {
-		return "", errors.New("command returned no data")
-	}
-	return *data, nil
-}
-
-func (client *Client) AddUserWithPairingCode(pairingCode string) error {
-	command := dto.AddUserWithPairingCode{
-		Data: pairingCode,
-	}
-	// Intentionally no cooker ID -- the oven isn't accessible from this account yet
-	_, _, err := client.SendCommand("", command)
-	return err
-}
-
 // ErrRequestNotAcknowledged indicates that we did not receive a response for a
 // command request. This can happen if there are networking issues, and also if
 // the command was sent to a nonexistent cooker ID.
@@ -197,7 +133,7 @@ func (e ErrRequestFailed) Error() string {
 	return fmt.Sprintf("request \"%s\" failed with error: %s\n", e.RequestID, e.ErrorMessage)
 }
 
-func (client *Client) SendCommand(cookerID CookerID, payload interface{}) (requestID dto.RequestID, data *string, err error) {
+func (client *Client) SendCommand(cookerID CookerID, payload interface{}) (requestID dto.RequestID, data map[string]interface{}, err error) {
 	payloadType := reflect.TypeOf(payload)
 	messageType := dto.RequestTypeToMessageType[payloadType]
 	if messageType == "" {
@@ -229,6 +165,7 @@ func (client *Client) SendCommand(cookerID CookerID, payload interface{}) (reque
 	}
 	if !commandResult.Valid() && !multiUserResult.Valid() {
 		slog.Error("outbound message payload is not valid",
+			slog.Any("message", message),
 			slog.Any("commandValidationErrors", commandResult.Errors()),
 			slog.Any("multiUserValidationErrors", multiUserResult.Errors()))
 		return "", nil, errors.New("invalid payload")
@@ -247,33 +184,38 @@ func (client *Client) SendCommand(cookerID CookerID, payload interface{}) (reque
 			slog.String("buf", string(buf)))
 	}
 
-	client.requestResponses[requestID] = make(chan dto.Response, 1)
+	client.requestResponses[requestID] = make(chan map[string]interface{}, 1)
 	defer delete(client.requestResponses, requestID)
 
-	err = client.conn.WriteMessage(websocket.TextMessage, buf)
-	if err != nil {
-		slog.Error("failed to write message",
-			slog.Any("err", err),
-			"buffer", buf)
-		return "", nil, errors.New("failed to send message")
+	client.connMutex.Lock()
+	{
+		defer client.connMutex.Unlock()
+
+		err = client.conn.WriteMessage(websocket.TextMessage, buf)
+		if err != nil {
+			slog.Error("failed to write message",
+				slog.Any("err", err),
+				"buffer", buf)
+			return "", nil, errors.New("failed to send message")
+		}
 	}
 
 	// Block until we receive an acknowledgement
 	select {
 	case response := <-client.requestResponses[requestID]:
-		if response.Status == dto.ResponseStatusOk {
-			return requestID, response.Data, nil
+		if response["status"].(string) == string(dto.ResponseStatusOk) {
+			return requestID, response, nil
 		}
 
 		var errorMessage string
-		if response.Error != nil {
-			errorMessage = *response.Error
+		if response["error"] != nil {
+			errorMessage = response["error"].(string)
 		} else {
 			errorMessage = "(unknown error)"
 		}
 		return "", nil, ErrRequestFailed{RequestID: requestID, ErrorMessage: errorMessage}
 
-	case <-time.After(RequestAcknowledgementTimeout):
+	case <-time.After(requestAcknowledgementTimeout):
 		return "", nil, ErrRequestNotAcknowledged{RequestID: requestID}
 	}
 }
@@ -313,7 +255,49 @@ func (client *Client) receiveMessages() {
 		}
 
 		// Decode the payload of the message
-		if messageType := dto.MessageTypeToResponseType[rawMessage.Command]; messageType != nil {
+		if rawMessage.Command == "RESPONSE" {
+			if rawMessage.RequestID == nil {
+				slog.Warn("received response with no request ID; ignoring")
+				break
+			}
+
+			var payload map[string]interface{}
+			err = json.Unmarshal(rawMessage.Payload, &payload)
+			if err != nil {
+				slog.Error("error unmarshalling response",
+					slog.Any("err", err))
+				continue
+			}
+
+			decodedMessage := dto.Message{
+				RequestID: rawMessage.RequestID,
+				Command:   rawMessage.Command,
+				Payload:   payload,
+			}
+
+			status, exists := payload["status"]
+			if !exists {
+				slog.Error("response did not contain status field")
+				continue
+			}
+
+			if status == dto.ResponseStatusOk {
+
+			}
+
+			// Unblock the synchronous message sender
+			requestID := *decodedMessage.RequestID
+			ch, exists := client.requestResponses[requestID]
+			if !exists {
+				slog.Warn("received response for unknown request ID",
+					"requestID", requestID)
+				break
+			}
+			ch <- payload
+
+			// Still send the response to any listeners.
+			client.inboundMessages <- decodedMessage
+		} else if messageType := dto.MessageTypeToResponseType[rawMessage.Command]; messageType != nil {
 			dec = json.NewDecoder(bytes.NewReader(rawMessage.Payload))
 			dec.DisallowUnknownFields()
 
@@ -322,8 +306,8 @@ func (client *Client) receiveMessages() {
 			if err != nil {
 				slog.Error("error parsing payload JSON",
 					slog.Any("err", err),
-					"command", rawMessage.Command,
-					"message", message)
+					slog.String("command", string(rawMessage.Command)),
+					slog.String("message", string(message)))
 				continue
 			}
 
@@ -334,22 +318,6 @@ func (client *Client) receiveMessages() {
 			}
 
 			switch payload := decodedPayload.(type) {
-			case *dto.Response:
-				if decodedMessage.RequestID == nil {
-					slog.Warn("received response with no request ID; ignoring")
-					break
-				}
-
-				// Unblock the synchronous message sender
-				requestID := *decodedMessage.RequestID
-				ch, exists := client.requestResponses[requestID]
-				if !exists {
-					slog.Warn("received response for unknown request ID",
-						"requestID", requestID)
-					break
-				}
-				ch <- *payload
-
 			case *dto.ApoStateEvent:
 				// We only have a JSON Schema for EVENT_APO_STATE, so we can at
 				// least perform a soft validation for those messages
@@ -395,7 +363,7 @@ func getFirebaseIdToken(refreshToken string) (string, error) {
 		return "", err
 	}
 	authURL.RawQuery = url.Values{
-		"key": {FirebaseAPIKey},
+		"key": {firebaseAPIKey},
 	}.Encode()
 
 	bodyValues := url.Values{
@@ -433,19 +401,19 @@ func getFirebaseIdToken(refreshToken string) (string, error) {
 }
 
 func connectWebsocket(firebaseIdToken string) (conn *websocket.Conn, err error) {
-	devicesURL, err := url.Parse(AnovaDevicesEndpoint)
+	devicesURL, err := url.Parse(anovaDevicesEndpoint)
 	if err != nil {
 		return nil, err
 	}
 	devicesURL.RawQuery = url.Values{
 		"token":                {firebaseIdToken},
-		"supportedAccessories": {AnovaDevicesSupportedAccessories},
-		"platform":             {AnovaDevicesPlatform},
+		"supportedAccessories": {anovaDevicesSupportedAccessories},
+		"platform":             {anovaDevicesPlatform},
 	}.Encode()
 
 	headers := http.Header{
-		"Sec-WebSocket-Protocol": {AnovaDevicesWebSocketProtocol},
-		"User-Agent":             {AnovaDevicesUserAgent},
+		"Sec-WebSocket-Protocol": {anovaDevicesWebSocketProtocol},
+		"User-Agent":             {anovaDevicesUserAgent},
 	}
 	conn, _, err = websocket.DefaultDialer.Dial(devicesURL.String(), headers)
 	if err != nil {
@@ -453,4 +421,134 @@ func connectWebsocket(firebaseIdToken string) (conn *websocket.Conn, err error) 
 	}
 
 	return conn, nil
+}
+
+func (client *Client) SetLamp(cookerID CookerID, on bool) error {
+	command := dto.SetLampCommand{
+		On: on,
+	}
+	_, _, err := client.SendCommand(cookerID, command)
+	return err
+}
+
+// SetLampPreference sends a command to set the oven's default lamp state.
+func (client *Client) SetLampPreference(cookerID CookerID, on bool) error {
+	command := dto.SetLampPreferenceCommand{
+		On: on,
+	}
+	_, _, err := client.SendCommand(cookerID, command)
+	return err
+}
+
+// SetProbe sends a command to adjust the setpoint temperature of the temperature
+// probe.
+func (client *Client) SetProbe(cookerID CookerID, setpointCelsius float64) error {
+	command := dto.SetProbeCommand{
+		Setpoint: dto.NewTemperatureFromCelsius(setpointCelsius),
+	}
+	_, _, err := client.SendCommand(cookerID, command)
+	return err
+}
+
+//func (client *Client) StartCook(cookerID CookerID) error {
+//	command := dto.StartCookCommand{}
+//	_, _, err := client.SendCommand(cookerID, command)
+//	return err
+//}
+
+// DisconnectOvenFromAccount sends a command to remove the oven from the current
+// account. You will have to go through the Wi-Fi setup process all over again if
+// no other accounts are paired with the oven.
+func (client *Client) DisconnectOvenFromAccount(cookerID CookerID) error {
+	command := dto.DisconnectCommand{}
+	_, _, err := client.SendCommand(cookerID, command)
+	return err
+}
+
+func (client *Client) SetName(cookerID CookerID, name string) error {
+	command := dto.NameWifiDeviceCommand{
+		Name: name,
+	}
+	_, _, err := client.SendCommand(cookerID, command)
+	return err
+}
+
+// GeneratePairingCode sends a command to generate a new pairing code for an
+// oven. The pairing code is a 24-hour-long JWT that can be used from another
+// account via AddUserWithPairingCode.
+func (client *Client) GeneratePairingCode(cookerID CookerID) (pairingCode string, err error) {
+	command := dto.GenerateNewPairingCode{}
+	_, data, err := client.SendCommand(cookerID, command)
+	if err != nil {
+		return "", err
+	}
+	if data == nil {
+		return "", errors.New("command returned no response")
+	}
+	pairingCode, exists := data["data"].(string)
+	if !exists {
+		return "", errors.New("command returned no data")
+	}
+	return pairingCode, nil
+}
+
+// AddUserWithPairingCode sends a command to add an oven to the current account.
+// A pairing code can be generated by calling GeneratePairingCode from a separate
+// account.
+func (client *Client) AddUserWithPairingCode(pairingCode string) error {
+	command := dto.AddUserWithPairingCode{
+		Data: pairingCode,
+	}
+	// Intentionally no cooker ID -- the oven isn't accessible from this account yet
+	_, _, err := client.SendCommand("", command)
+	return err
+}
+
+// ListUsersForDevice sends a command that returns a list of user IDs that have
+// access to an oven
+func (client *Client) ListUsersForDevice(cookerID CookerID) (userIds []string, err error) {
+	command := dto.ListUsersForDevice{}
+	_, data, err := client.SendCommand(cookerID, command)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, userId := range data["userIds"].([]interface{}) {
+		userIds = append(userIds, userId.(string))
+	}
+	return userIds, nil
+}
+
+func generateRandomCookUuid() string {
+	return cookIdPrefix + uuid.New().String()
+}
+
+func (client *Client) StartCook(cookerID CookerID, stages []dto.CookingStage) error {
+	command := dto.StartCookCommandV1{
+		CookID: generateRandomCookUuid(),
+		Stages: stages,
+	}
+	_, _, err := client.SendCommand(cookerID, command)
+	return err
+}
+
+// This really should be taking dto.OvenStage, but...
+func (client *Client) UpdateCookStage(cookerID CookerID, stage dto.CookingStage) error {
+	command := dto.UpdateCookStageCommand(stage)
+	_, _, err := client.SendCommand(cookerID, command)
+	return err
+}
+
+func (client *Client) UpdateCookStages(cookerID CookerID, stages []dto.CookingStage) error {
+	command := dto.UpdateCookStagesCommand{
+		Stages: stages,
+	}
+	_, _, err := client.SendCommand(cookerID, command)
+	return err
+}
+
+func (client *Client) StopCook(cookerID CookerID) error {
+	command := dto.StopCookCommand{}
+	_, _, err := client.SendCommand(cookerID, command)
+	return err
 }

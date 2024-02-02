@@ -34,11 +34,27 @@ type Temperature struct {
 	Fahrenheit float64 `json:"fahrenheit,omitempty"`
 }
 
-func TemperatureFromCelsius(celsius float64) Temperature {
+func CelsiusToFahrenheit(celsius float64) float64 {
+	return math.Round(1.8*celsius + 32)
+}
+
+func NewTemperatureFromCelsius(celsius float64) Temperature {
 	// The app uses Celsius, then calculates the Fahrenheit value. It's unclear
 	// what would happen if these values diverged from each other.
 	return Temperature{
 		Celsius:    celsius,
-		Fahrenheit: math.Round(1.8*celsius + 32),
+		Fahrenheit: CelsiusToFahrenheit(celsius),
 	}
+}
+
+type StageType string
+
+const (
+	StageTypePreheat StageType = "preheat"
+	StageTypeCook    StageType = "cook"
+	StageTypeStop    StageType = "stop"
+)
+
+type StageTimer struct {
+	Initial int `json:"initial"`
 }
