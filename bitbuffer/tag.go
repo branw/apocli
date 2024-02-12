@@ -6,11 +6,15 @@ import (
 )
 
 const (
+	// TagBitWidth allows the bit-width of primitive struct fields to be overridden
 	TagBitWidth = "bbwidth"
+	// TagValidate allows the value to be validated directly after parsing
+	TagValidate = "bbvalidate"
 )
 
 type ParsedTag struct {
 	BitWidth uint64
+	Validate bool
 }
 
 func ParseTag(tag reflect.StructTag) (ParsedTag, error) {
@@ -19,8 +23,14 @@ func ParseTag(tag reflect.StructTag) (ParsedTag, error) {
 		return ParsedTag{}, err
 	}
 
+	validate, err := ParseValidateTag(tag)
+	if err != nil {
+		return ParsedTag{}, err
+	}
+
 	tags := ParsedTag{
 		BitWidth: bitWidth,
+		Validate: validate,
 	}
 	return tags, nil
 }
@@ -43,4 +53,17 @@ func ParseBitWidthTag(tag reflect.StructTag) (uint64, error) {
 		return 0, err
 	}
 	return width, nil
+}
+
+func ParseValidateTag(tag reflect.StructTag) (bool, error) {
+	value, present := tag.Lookup(TagValidate)
+	if !present {
+		return false, nil
+	}
+
+	validate, err := strconv.ParseBool(value)
+	if err != nil {
+		return false, err
+	}
+	return validate, nil
 }

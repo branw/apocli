@@ -214,16 +214,16 @@ func (sensor VirtualAmbientSensor) Sensor() Sensor {
 }
 
 type ManufacturerData struct {
-	ProductType  ProductType `bbwidth:"8"`
+	ProductType  ProductType `bbwidth:"8" bbvalidate:"true"`
 	SerialNumber uint32
 
 	RawThermistorData RawThermistorValues
 
-	Mode    Mode    `bbwidth:"2"`
+	Mode    Mode    `bbwidth:"2" bbvalidate:"true"`
 	ColorID ColorID `bbwidth:"3"`
 	ProbeID ProbeID `bbwidth:"3"`
 
-	BatteryStatus        BatteryStatus        `bbwidth:"1"`
+	BatteryStatus        BatteryStatus        `bbwidth:"1" bbvalidate:"true"`
 	VirtualCoreSensor    VirtualCoreSensor    `bbwidth:"3"`
 	VirtualSurfaceSensor VirtualSurfaceSensor `bbwidth:"2"`
 	VirtualAmbientSensor VirtualAmbientSensor `bbwidth:"2"`
