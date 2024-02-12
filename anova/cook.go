@@ -9,15 +9,6 @@ type Cook struct {
 	oven *Oven
 }
 
-type ErrInvalidCookStage struct {
-	Stage      *CookStage
-	StageError error
-}
-
-func (err ErrInvalidCookStage) Error() string {
-	return fmt.Sprintf("invalid cook stage: %s (stage: %+v)", err.StageError, err.Stage)
-}
-
 func NewCook(stages ...*CookStage) (*Cook, error) {
 	for _, stage := range stages {
 		if err := (*stage).Validate(); err != nil {
@@ -30,18 +21,6 @@ func NewCook(stages ...*CookStage) (*Cook, error) {
 
 		id: generateRandomCookUuid(),
 	}, nil
-}
-
-type ErrCookNotStarted struct{}
-
-func (err ErrCookNotStarted) Error() string {
-	return "cannot mutate cook that has not been started"
-}
-
-type ErrCookAlreadyStarted struct{}
-
-func (err ErrCookAlreadyStarted) Error() string {
-	return "cannot start cook that has already been started"
 }
 
 func (cook *Cook) Start(oven *Oven) error {
@@ -72,4 +51,25 @@ func (cook *Cook) Stop() error {
 		cook.oven = nil
 	}
 	return err
+}
+
+type ErrInvalidCookStage struct {
+	Stage      *CookStage
+	StageError error
+}
+
+func (err ErrInvalidCookStage) Error() string {
+	return fmt.Sprintf("invalid cook stage: %s (stage: %+v)", err.StageError, err.Stage)
+}
+
+type ErrCookNotStarted struct{}
+
+func (err ErrCookNotStarted) Error() string {
+	return "cannot mutate cook that has not been started"
+}
+
+type ErrCookAlreadyStarted struct{}
+
+func (err ErrCookAlreadyStarted) Error() string {
+	return "cannot start cook that has already been started"
 }

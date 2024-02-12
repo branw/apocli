@@ -1,7 +1,6 @@
 package dto
 
 import (
-	"encoding/json"
 	"reflect"
 )
 
@@ -60,11 +59,17 @@ type Command struct {
 }
 
 type SetFanCommand struct {
-	//TODO
+	Speed int `json:"speed"`
+}
+
+type HeatElementSetting struct {
+	On bool `json:"on"`
 }
 
 type SetHeatingElementsCommand struct {
-	//TODO
+	Top    HeatingElementSetting `json:"top"`
+	Rear   HeatingElementSetting `json:"rear"`
+	Bottom HeatingElementSetting `json:"bottom"`
 }
 
 type SetLampCommand struct {
@@ -80,7 +85,10 @@ type SetProbeCommand struct {
 }
 
 type SetSteamGeneratorsCommand struct {
-	//TODO
+	Mode SteamGeneratorMode `json:"mode"`
+
+	RelativeHumidity *SteamSetting `json:"relativeHumidity,omitempty"`
+	SteamPercentage  *SteamSetting `json:"steamPercentage,omitempty"`
 }
 
 type SetTemperatureBulbsCommand struct {
@@ -88,15 +96,15 @@ type SetTemperatureBulbsCommand struct {
 }
 
 type SetTemperatureUnitCommand struct {
-	//TODO
+	TemperatureUnit TemperatureUnit `json:"temperatureUnit"`
 }
 
 type SetTimerCommand struct {
-	//TODO
+	Initial int `json:"initial"`
 }
 
 type SetVentCommand struct {
-	//TODO
+	Open bool `json:"open"`
 }
 
 type OvenStage interface {
@@ -119,8 +127,8 @@ type CookingStage struct {
 	Vent             *StageVent             `json:"vent"`
 
 	//TODO
-	Title       *json.RawMessage `json:"title,omitempty"`
-	Description *string          `json:"description,omitempty"`
+	Title       *Title  `json:"title,omitempty"`
+	Description *string `json:"description,omitempty"`
 
 	RackPosition    *StageRackPosition    `json:"rackPosition,omitempty"`
 	SteamGenerators *StageSteamGenerators `json:"steamGenerators,omitempty"`
@@ -143,10 +151,9 @@ type StopStage struct {
 	Type               StageType `json:"type"`
 	UserActionRequired bool      `json:"userActionRequired"`
 
-	//TODO wtf is this type
-	Title       *interface{} `json:"title,omitempty"`
-	Description *string      `json:"description,omitempty"`
-	Timer       *StageTimer  `json:"timer,omitempty"`
+	Title       *Title      `json:"title,omitempty"`
+	Description *string     `json:"description,omitempty"`
+	Timer       *StageTimer `json:"timer,omitempty"`
 }
 
 func (stage StopStage) isOvenStage() {}
@@ -161,20 +168,16 @@ type StartCookCommandV2 struct {
 	//TODO
 }
 
-type StartDescaleCommand struct {
-	//TODO
-}
+type StartDescaleCommand struct{}
 
-type AbortDescaleCommand struct {
-	//TODO
-}
+type AbortDescaleCommand struct{}
 
 type StartFirmwareUpdateCommand struct {
-	//TODO
+	DownloadLink string `json:"downloadLink"`
 }
 
 type StartStageCommand struct {
-	//TODO
+	StageID string `json:"stageId"`
 }
 
 type StopCookCommand struct{}
@@ -186,35 +189,37 @@ type UpdateCookStagesCommand struct {
 }
 
 type SetReportStateRate struct {
-	//TODO
+	Cooking int `json:"cooking"`
+	Idle    int `json:"idle"`
 }
 
-type SetReportStateRateDefault struct {
-	//TODO
-}
+type SetReportStateRateDefault struct{}
 
 type SetBoilerTime struct {
 	Time int `json:"time"`
 }
 
-type AuthTokenV2 struct {
-	//TODO
+type SupportedAccessory struct {
+	Items string `json:"items"`
 }
 
-type HealthCheck struct {
-	//TODO
+type AuthTokenV2 struct {
+	Platform             string               `json:"platform"`
+	SupportedAccessories []SupportedAccessory `json:"supported_accessories"`
+	Token                string               `json:"token"`
 }
+
+type HealthCheck struct{}
 
 type SetMetadataCommand struct {
 	Metadata map[string]interface{} `json:"metadata"`
 }
 
-type GetConfiguration struct {
-	//TODO
-}
+type GetConfiguration struct{}
 
 type SetConfiguration struct {
-	//TODO
+	Token     string `json:"token"`
+	ExpiresAt string `json:"expiresAt"`
 }
 
 type NameWifiDeviceCommand struct {
@@ -226,24 +231,31 @@ type DisconnectCommand struct {
 }
 
 type RequestDiagnosticsCommand struct {
-	//TODO
+	Command string `json:"command"`
 }
 
 type RegisterPushTokenCommand struct {
-	//TODO
+	AppId    string `json:"appId"`
+	Platform string `json:"platform"`
+	Token    string `json:"token"`
 }
 
+type TimeZone struct {
+	ID        string `json:"id"`
+	Code      string `json:"code"`
+	GMTOffset int    `json:"gmt_offset"`
+}
+
+// Yes, these fields are snake_case
 type SetTimeZoneCommand struct {
-	//TODO
+	TimeZone TimeZone `json:"time_zone"`
 }
 
 type StartLiveStreamCommand struct {
-	//TODO
+	Srt interface{} `json:"srt"`
 }
 
-type StopLiveStreamCommand struct {
-	//TODO
-}
+type StopLiveStreamCommand struct{}
 
 type GenerateNewPairingCode struct{}
 
@@ -252,5 +264,4 @@ type AddUserWithPairingCode struct {
 	Data string `json:"data"`
 }
 
-type ListUsersForDevice struct {
-}
+type ListUsersForDevice struct{}

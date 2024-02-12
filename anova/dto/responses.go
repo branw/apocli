@@ -95,22 +95,14 @@ const (
 	StageRackPosition5 StageRackPosition = 5
 )
 
-type RelativeHumiditySetting struct {
-	Setpoint int `json:"setpoint"`
-}
-
-type SteamPercentageSetting struct {
-	Setpoint int `json:"setpoint"`
-}
-
 // TODO Maybe merge with SteamGeneratorsNode?
 type StageSteamGenerators struct {
 	Mode SteamGeneratorMode `json:"mode"`
 
 	// For StageRelativeHumiditySteamGenerator, wet mode
-	RelativeHumidity *RelativeHumiditySetting `json:"relativeHumidity,omitempty"`
+	RelativeHumidity *SteamSetting `json:"relativeHumidity,omitempty"`
 	// For StageSteamPercentageSteamGenerator, dry mode
-	SteamPercentage *SteamPercentageSetting `json:"steamPercentage,omitempty"`
+	SteamPercentage *SteamSetting `json:"steamPercentage,omitempty"`
 }
 
 // Replaces StageTemperatureProbe
@@ -215,14 +207,6 @@ type SteamPercentageSteamGeneratorNode struct {
 	Setpoint int `json:"setpoint"`
 }
 
-type SteamGeneratorMode string
-
-const (
-	SteamGeneratorModeIdle             SteamGeneratorMode = "idle"
-	SteamGeneratorModeRelativeHumidity SteamGeneratorMode = "relative-humidity"
-	SteamGeneratorModeSteamPercentage  SteamGeneratorMode = "steam-percentage"
-)
-
 type SteamGeneratorsNode struct {
 	Mode SteamGeneratorMode `json:"mode"`
 
@@ -314,13 +298,6 @@ const (
 	StateModeIdle    StateMode = "idle"
 	StateModeCook    StateMode = "cook"
 	StateModeDescale StateMode = "descale"
-)
-
-type TemperatureUnit string
-
-const (
-	TemperatureUnitCelsius    TemperatureUnit = "C"
-	TemperatureUnitFahrenheit TemperatureUnit = "F"
 )
 
 type StateV1 struct {

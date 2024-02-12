@@ -48,6 +48,10 @@ func (service *Service) ReadEvent() Event {
 	}
 }
 
+func (service *Service) writeEvent(event Event) {
+	service.events <- event
+}
+
 func (service *Service) receiveMessages() {
 	for {
 		message, err := service.client.ReadMessage()
@@ -70,6 +74,7 @@ func (service *Service) receiveMessages() {
 			}
 
 			service.User = &newUser
+			service.writeEvent(UserUpdated{User: service.User})
 
 		// New device was paired with the account
 		case *dto.WifiAddedEvent:

@@ -2,6 +2,8 @@ package dto
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"math"
 )
 
@@ -57,4 +59,63 @@ const (
 
 type StageTimer struct {
 	Initial int `json:"initial"`
+}
+
+type SteamGeneratorMode string
+
+const (
+	SteamGeneratorModeIdle             SteamGeneratorMode = "idle"
+	SteamGeneratorModeRelativeHumidity SteamGeneratorMode = "relative-humidity"
+	SteamGeneratorModeSteamPercentage  SteamGeneratorMode = "steam-percentage"
+)
+
+type SteamSetting struct {
+	Setpoint int `json:"setpoint"`
+}
+
+type TemperatureUnit string
+
+const (
+	TemperatureUnitCelsius    TemperatureUnit = "C"
+	TemperatureUnitFahrenheit TemperatureUnit = "F"
+)
+
+type Title struct {
+	String string
+}
+
+func NewTitle(title string) *Title {
+	return &Title{String: title}
+}
+
+func (title *Title) UnmarshalJSON(data []byte) error {
+	// First, try parsing the field as an int, e.g.:
+	//   "title": 0,
+	var titleInt int
+	err := json.Unmarshal(data, &titleInt)
+	if err == nil {
+		if titleInt == 0 {
+			title.String = ""
+			return nil
+		}
+		return fmt.Errorf("unknown title int \"%d\"", titleInt)
+	}
+
+	// Otherwise, try parsing the field as a string, e.g.:
+	//   "title": "my title",
+	var titleStr string
+	err = json.Unmarshal(data, &titleStr)
+	if err == nil {
+		title.String = titleStr
+		return nil
+	}
+
+	return errors.New("failed to unmarshal title")
+}
+
+func (title *Title) MarshalJSON() ([]byte, error) {
+	if title.String == "" {
+		return json.Marshal(0)
+	}
+	return json.Marshal(title.String)
 }

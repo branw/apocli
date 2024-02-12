@@ -1,7 +1,6 @@
 package anova
 
 import (
-	"encoding/json"
 	"go-apo/anova/dto"
 	"log/slog"
 	"math"
@@ -29,10 +28,10 @@ type Validatable interface {
 	Validate() error
 }
 
-type Terminator interface {
+type StageEndCondition interface {
 	Validatable
 
-	isStageTerminator()
+	isStageEndCondition()
 }
 
 type TimerTrigger string
@@ -62,9 +61,9 @@ func NewTimer(duration time.Duration, trigger TimerTrigger) *Timer {
 	}
 }
 
-func (timer Timer) isStageTerminator() {}
+func (timer *Timer) isStageEndCondition() {}
 
-func (timer Timer) Validate() error {
+func (timer *Timer) Validate() error {
 	if err := timer.Trigger.Validate(); err != nil {
 		return err
 	}
@@ -87,7 +86,7 @@ func NewProbeFahrenheit(temperature float64) *Probe {
 	return NewProbeCelsius(dto.CelsiusToFahrenheit(temperature))
 }
 
-func (probe *Probe) isStageTerminator() {}
+func (probe *Probe) isStageEndCondition() {}
 
 func (probe *Probe) Validate() error {
 	// See StageAdapter.isValidTargetProbeTemperatureValue
@@ -211,12 +210,6 @@ func NewNonSousVideSetpointCelsius(temperatureCelsius float64) TemperatureSetpoi
 	return NewSetpoint(temperatureCelsius, TemperatureModeDry)
 }
 
-type ErrInvalidTemperatureSetpoint struct{}
-
-func (err ErrInvalidTemperatureSetpoint) Error() string {
-	return "invalid mode and temperature setpoint combination"
-}
-
 func (setpoint TemperatureSetpoint) Validate() error {
 	if err := setpoint.Mode.Validate(); err != nil {
 		return err
@@ -234,7 +227,7 @@ type CookStage struct {
 	TemperatureSetpoint TemperatureSetpoint
 	HeatingElements     HeatingElements
 	SteamPercentage     *SteamPercentage
-	Terminator          Terminator
+	Terminator          StageEndCondition
 
 	//TODO support transition settings between stages (currently, we always do automatic transitions)
 
@@ -243,7 +236,7 @@ type CookStage struct {
 	cook           *Cook
 }
 
-func NewCookStage(rackPosition RackPosition, fanSpeed FanSpeed, temperatureSetpoint TemperatureSetpoint, heatingElements HeatingElements, steamPercentage *SteamPercentage, terminator Terminator) *CookStage {
+func NewCookStage(rackPosition RackPosition, fanSpeed FanSpeed, temperatureSetpoint TemperatureSetpoint, heatingElements HeatingElements, steamPercentage *SteamPercentage, terminator StageEndCondition) *CookStage {
 	return &CookStage{
 		RackPosition:        rackPosition,
 		FanSpeed:            fanSpeed,
@@ -320,7 +313,6 @@ func stageRackPositionToPtr(value dto.StageRackPosition) *dto.StageRackPosition 
 
 // toDto converts a stage into one or more DTO stages. This is necessary to support timers
 func (stage *CookStage) toDto() []dto.CookingStage {
-	title := json.RawMessage("\"foo\"")
 	description := "desc"
 	cookStage := dto.CookingStage{
 		StepType: "stage",
@@ -344,7 +336,7 @@ func (stage *CookStage) toDto() []dto.CookingStage {
 
 		RackPosition: stageRackPositionToPtr(dto.StageRackPosition(stage.RackPosition)),
 
-		Title:       &title,
+		Title:       dto.NewTitle("foo bar"),
 		Description: &description,
 	}
 
@@ -356,7 +348,7 @@ func (stage *CookStage) toDto() []dto.CookingStage {
 		if stage.SteamPercentage != nil {
 			cookStage.SteamGenerators = &dto.StageSteamGenerators{
 				Mode: dto.SteamGeneratorModeSteamPercentage,
-				SteamPercentage: &dto.SteamPercentageSetting{
+				SteamPercentage: &dto.SteamSetting{
 					Setpoint: int(*stage.SteamPercentage),
 				},
 			}
@@ -367,7 +359,7 @@ func (stage *CookStage) toDto() []dto.CookingStage {
 		if stage.SteamPercentage != nil {
 			cookStage.SteamGenerators = &dto.StageSteamGenerators{
 				Mode: dto.SteamGeneratorModeRelativeHumidity,
-				RelativeHumidity: &dto.RelativeHumiditySetting{
+				RelativeHumidity: &dto.SteamSetting{
 					Setpoint: int(*stage.SteamPercentage),
 				},
 			}
@@ -470,4 +462,10 @@ type ErrInvalidTemperatureMode struct{}
 
 func (err ErrInvalidTemperatureMode) Error() string {
 	return "invalid temperature mode"
+}
+
+type ErrInvalidTemperatureSetpoint struct{}
+
+func (err ErrInvalidTemperatureSetpoint) Error() string {
+	return "invalid mode and temperature setpoint combination"
 }

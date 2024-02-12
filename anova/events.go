@@ -52,3 +52,9 @@ type ActiveCookStageChanged struct {
 	Oven *Oven
 	Cook *Cook
 }
+
+type UserUpdated struct {
+	User *User
+}
+
+func (UserUpdated) isEvent() {}
