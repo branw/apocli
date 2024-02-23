@@ -1,7 +1,7 @@
 package anova
 
 import (
-	"go-apo/anova/dto"
+	"go-apo/pkg/anova/dto"
 	"time"
 )
 
@@ -47,13 +47,13 @@ func (oven *Oven) ListAccounts() (accountIDs []string, err error) {
 	return oven.client.ListUsersForDevice(oven.CookerID)
 }
 
-func (oven *Oven) StartCook(stages []*CookStage) error {
-	return oven.client.StartCook(oven.CookerID, stagesToDto(stages))
+func (oven *Oven) StartCook(cookID string, stages CookStages) error {
+	return oven.client.StartCook(oven.CookerID, cookID, stages.ToDto())
 }
 
 func (oven *Oven) UpdateCookStage(stage *CookStage) error {
 	// A bit of a lie, because we might actually need to update two stages
-	dtoStages := stagesToDto([]*CookStage{stage})
+	dtoStages := CookStages{stage}.ToDto()
 	for _, dtoStage := range dtoStages {
 		err := oven.client.UpdateCookStage(oven.CookerID, dtoStage)
 		if err != nil {
@@ -63,8 +63,8 @@ func (oven *Oven) UpdateCookStage(stage *CookStage) error {
 	return nil
 }
 
-func (oven *Oven) UpdateCookStages(stages []*CookStage) error {
-	return oven.client.UpdateCookStages(oven.CookerID, stagesToDto(stages))
+func (oven *Oven) UpdateCookStages(stages CookStages) error {
+	return oven.client.UpdateCookStages(oven.CookerID, stages.ToDto())
 }
 
 func (oven *Oven) StopCook() error {

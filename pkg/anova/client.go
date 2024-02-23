@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/xeipuuv/gojsonschema"
-	"go-apo/anova/dto"
+	dto2 "go-apo/pkg/anova/dto"
 	"io"
 	"log/slog"
 	"net/http"
@@ -46,8 +46,8 @@ type Client struct {
 	stop    chan bool
 	stopped bool
 
-	inboundMessages  chan dto.Message
-	requestResponses map[dto.RequestID]chan map[string]interface{}
+	inboundMessages  chan dto2.Message
+	requestResponses map[dto2.RequestID]chan map[string]interface{}
 }
 
 func OptionPrintMessageTraces(client *Client) error {
@@ -74,8 +74,8 @@ func NewClient(firebaseRefreshToken string, options ...func(*Client) error) (cli
 		stop:    make(chan bool),
 		stopped: false,
 
-		inboundMessages:  make(chan dto.Message, 100),
-		requestResponses: make(map[dto.RequestID]chan map[string]interface{}),
+		inboundMessages:  make(chan dto2.Message, 100),
+		requestResponses: make(map[dto2.RequestID]chan map[string]interface{}),
 	}
 
 	// Apply all options
@@ -115,7 +115,7 @@ func (client *Client) Close() {
 // command request. This can happen if there are networking issues, and also if
 // the command was sent to a nonexistent cooker ID.
 type ErrRequestNotAcknowledged struct {
-	RequestID dto.RequestID
+	RequestID dto2.RequestID
 }
 
 func (e ErrRequestNotAcknowledged) Error() string {
@@ -125,7 +125,7 @@ func (e ErrRequestNotAcknowledged) Error() string {
 // ErrRequestFailed indicates that a request command returned an error or other
 // unsuccessful response.
 type ErrRequestFailed struct {
-	RequestID    dto.RequestID
+	RequestID    dto2.RequestID
 	ErrorMessage string
 }
 
@@ -133,21 +133,21 @@ func (e ErrRequestFailed) Error() string {
 	return fmt.Sprintf("request \"%s\" failed with error: %s\n", e.RequestID, e.ErrorMessage)
 }
 
-func (client *Client) SendCommand(cookerID CookerID, payload interface{}) (requestID dto.RequestID, data map[string]interface{}, err error) {
+func (client *Client) SendCommand(cookerID CookerID, payload interface{}) (requestID dto2.RequestID, data map[string]interface{}, err error) {
 	payloadType := reflect.TypeOf(payload)
-	messageType := dto.RequestTypeToMessageType[payloadType]
+	messageType := dto2.RequestTypeToMessageType[payloadType]
 	if messageType == "" {
 		return "", nil, errors.New(fmt.Sprintf("missing message type for payload %s", payloadType))
 	}
 
-	requestID = dto.RequestID(uuid.New().String())
+	requestID = dto2.RequestID(uuid.New().String())
 
-	command := dto.Command{
-		ID:      dto.CookerID(cookerID),
+	command := dto2.Command{
+		ID:      dto2.CookerID(cookerID),
 		Type:    messageType,
 		Payload: payload,
 	}
-	message := dto.Message{
+	message := dto2.Message{
 		Command:   messageType,
 		Payload:   command,
 		RequestID: &requestID,
@@ -155,11 +155,11 @@ func (client *Client) SendCommand(cookerID CookerID, payload interface{}) (reque
 
 	// Validate the entire command using the JSON Schema
 	jsonLoader := gojsonschema.NewGoLoader(message)
-	commandResult, err := dto.OvenCommandSchema.Validate(jsonLoader)
+	commandResult, err := dto2.OvenCommandSchema.Validate(jsonLoader)
 	if err != nil {
 		return "", nil, err
 	}
-	multiUserResult, err := dto.MultiUserCommandSchema.Validate(jsonLoader)
+	multiUserResult, err := dto2.MultiUserCommandSchema.Validate(jsonLoader)
 	if err != nil {
 		return "", nil, err
 	}
@@ -203,7 +203,7 @@ func (client *Client) SendCommand(cookerID CookerID, payload interface{}) (reque
 	// Block until we receive an acknowledgement
 	select {
 	case response := <-client.requestResponses[requestID]:
-		if response["status"].(string) == string(dto.ResponseStatusOk) {
+		if response["status"].(string) == string(dto2.ResponseStatusOk) {
 			return requestID, response, nil
 		}
 
@@ -246,7 +246,7 @@ func (client *Client) receiveMessages() {
 		// Decode the first layer of the message
 		dec := json.NewDecoder(bytes.NewReader(message))
 		dec.DisallowUnknownFields()
-		var rawMessage dto.RawMessage
+		var rawMessage dto2.RawMessage
 		err = dec.Decode(&rawMessage)
 		if err != nil {
 			slog.Error("error parsing JSON",
@@ -269,7 +269,7 @@ func (client *Client) receiveMessages() {
 				continue
 			}
 
-			decodedMessage := dto.Message{
+			decodedMessage := dto2.Message{
 				RequestID: rawMessage.RequestID,
 				Command:   rawMessage.Command,
 				Payload:   payload,
@@ -281,7 +281,7 @@ func (client *Client) receiveMessages() {
 				continue
 			}
 
-			if status == dto.ResponseStatusOk {
+			if status == dto2.ResponseStatusOk {
 
 			}
 
@@ -297,7 +297,7 @@ func (client *Client) receiveMessages() {
 
 			// Still send the response to any listeners.
 			client.inboundMessages <- decodedMessage
-		} else if messageType := dto.MessageTypeToResponseType[rawMessage.Command]; messageType != nil {
+		} else if messageType := dto2.MessageTypeToResponseType[rawMessage.Command]; messageType != nil {
 			dec = json.NewDecoder(bytes.NewReader(rawMessage.Payload))
 			dec.DisallowUnknownFields()
 
@@ -311,18 +311,18 @@ func (client *Client) receiveMessages() {
 				continue
 			}
 
-			decodedMessage := dto.Message{
+			decodedMessage := dto2.Message{
 				RequestID: rawMessage.RequestID,
 				Command:   rawMessage.Command,
 				Payload:   decodedPayload,
 			}
 
 			switch payload := decodedPayload.(type) {
-			case *dto.ApoStateEvent:
+			case *dto2.ApoStateEvent:
 				// We only have a JSON Schema for EVENT_APO_STATE, so we can at
 				// least perform a soft validation for those messages
 				jsonLoader := gojsonschema.NewGoLoader(payload.State)
-				result, err := dto.OvenStateSchema.Validate(jsonLoader)
+				result, err := dto2.OvenStateSchema.Validate(jsonLoader)
 				if err == nil && !result.Valid() {
 					slog.Warn("the oven state is not valid",
 						slog.Any("errors", result.Errors()))
@@ -344,10 +344,10 @@ func (e ErrClosedConnection) Error() string {
 	return "connection was closed"
 }
 
-func (client *Client) ReadMessage() (message dto.Message, err error) {
+func (client *Client) ReadMessage() (message dto2.Message, err error) {
 	select {
 	case <-client.stop:
-		return dto.Message{}, ErrClosedConnection{}
+		return dto2.Message{}, ErrClosedConnection{}
 
 	case message = <-client.inboundMessages:
 		return message, nil
@@ -358,6 +358,10 @@ func (client *Client) ReadMessage() (message dto.Message, err error) {
 // account info, including an email and OAuth sign-in identity info.
 // See https://firebase.google.com/docs/auth/admin/manage-sessions
 func getFirebaseIdToken(refreshToken string) (string, error) {
+	if len(refreshToken) == 0 {
+		return "", fmt.Errorf("invalid Firebase refresh token \"%s\"", refreshToken)
+	}
+
 	authURL, err := url.Parse("https://securetoken.googleapis.com/v1/token")
 	if err != nil {
 		return "", err
@@ -424,7 +428,7 @@ func connectWebsocket(firebaseIdToken string) (conn *websocket.Conn, err error) 
 }
 
 func (client *Client) SetLamp(cookerID CookerID, on bool) error {
-	command := dto.SetLampCommand{
+	command := dto2.SetLampCommand{
 		On: on,
 	}
 	_, _, err := client.SendCommand(cookerID, command)
@@ -433,7 +437,7 @@ func (client *Client) SetLamp(cookerID CookerID, on bool) error {
 
 // SetLampPreference sends a command to set the oven's default lamp state.
 func (client *Client) SetLampPreference(cookerID CookerID, on bool) error {
-	command := dto.SetLampPreferenceCommand{
+	command := dto2.SetLampPreferenceCommand{
 		On: on,
 	}
 	_, _, err := client.SendCommand(cookerID, command)
@@ -443,8 +447,8 @@ func (client *Client) SetLampPreference(cookerID CookerID, on bool) error {
 // SetProbe sends a command to adjust the setpoint temperature of the temperature
 // probe.
 func (client *Client) SetProbe(cookerID CookerID, setpointCelsius float64) error {
-	command := dto.SetProbeCommand{
-		Setpoint: dto.NewTemperatureFromCelsius(setpointCelsius),
+	command := dto2.SetProbeCommand{
+		Setpoint: dto2.NewTemperatureFromCelsius(setpointCelsius),
 	}
 	_, _, err := client.SendCommand(cookerID, command)
 	return err
@@ -460,13 +464,13 @@ func (client *Client) SetProbe(cookerID CookerID, setpointCelsius float64) error
 // account. You will have to go through the Wi-Fi setup process all over again if
 // no other accounts are paired with the oven.
 func (client *Client) DisconnectOvenFromAccount(cookerID CookerID) error {
-	command := dto.DisconnectCommand{}
+	command := dto2.DisconnectCommand{}
 	_, _, err := client.SendCommand(cookerID, command)
 	return err
 }
 
 func (client *Client) SetName(cookerID CookerID, name string) error {
-	command := dto.NameWifiDeviceCommand{
+	command := dto2.NameWifiDeviceCommand{
 		Name: name,
 	}
 	_, _, err := client.SendCommand(cookerID, command)
@@ -477,7 +481,7 @@ func (client *Client) SetName(cookerID CookerID, name string) error {
 // oven. The pairing code is a 24-hour-long JWT that can be used from another
 // account via AddUserWithPairingCode.
 func (client *Client) GeneratePairingCode(cookerID CookerID) (pairingCode string, err error) {
-	command := dto.GenerateNewPairingCode{}
+	command := dto2.GenerateNewPairingCode{}
 	_, data, err := client.SendCommand(cookerID, command)
 	if err != nil {
 		return "", err
@@ -496,7 +500,7 @@ func (client *Client) GeneratePairingCode(cookerID CookerID) (pairingCode string
 // A pairing code can be generated by calling GeneratePairingCode from a separate
 // account.
 func (client *Client) AddUserWithPairingCode(pairingCode string) error {
-	command := dto.AddUserWithPairingCode{
+	command := dto2.AddUserWithPairingCode{
 		Data: pairingCode,
 	}
 	// Intentionally no cooker ID -- the oven isn't accessible from this account yet
@@ -507,7 +511,7 @@ func (client *Client) AddUserWithPairingCode(pairingCode string) error {
 // ListUsersForDevice sends a command that returns a list of user IDs that have
 // access to an oven
 func (client *Client) ListUsersForDevice(cookerID CookerID) (userIds []string, err error) {
-	command := dto.ListUsersForDevice{}
+	command := dto2.ListUsersForDevice{}
 	_, data, err := client.SendCommand(cookerID, command)
 	if err != nil {
 		return nil, err
@@ -523,9 +527,9 @@ func generateRandomCookUuid() string {
 	return cookIdPrefix + uuid.New().String()
 }
 
-func (client *Client) StartCook(cookerID CookerID, stages []dto.CookingStage) error {
-	command := dto.StartCookCommandV1{
-		CookID: generateRandomCookUuid(),
+func (client *Client) StartCook(cookerID CookerID, cookId string, stages []dto2.CookingStage) error {
+	command := dto2.StartCookCommandV1{
+		CookID: cookId,
 		Stages: stages,
 	}
 	_, _, err := client.SendCommand(cookerID, command)
@@ -533,14 +537,14 @@ func (client *Client) StartCook(cookerID CookerID, stages []dto.CookingStage) er
 }
 
 // This really should be taking dto.OvenStage, but...
-func (client *Client) UpdateCookStage(cookerID CookerID, stage dto.CookingStage) error {
-	command := dto.UpdateCookStageCommand(stage)
+func (client *Client) UpdateCookStage(cookerID CookerID, stage dto2.CookingStage) error {
+	command := dto2.UpdateCookStageCommand(stage)
 	_, _, err := client.SendCommand(cookerID, command)
 	return err
 }
 
-func (client *Client) UpdateCookStages(cookerID CookerID, stages []dto.CookingStage) error {
-	command := dto.UpdateCookStagesCommand{
+func (client *Client) UpdateCookStages(cookerID CookerID, stages []dto2.CookingStage) error {
+	command := dto2.UpdateCookStagesCommand{
 		Stages: stages,
 	}
 	_, _, err := client.SendCommand(cookerID, command)
@@ -548,7 +552,7 @@ func (client *Client) UpdateCookStages(cookerID CookerID, stages []dto.CookingSt
 }
 
 func (client *Client) StopCook(cookerID CookerID) error {
-	command := dto.StopCookCommand{}
+	command := dto2.StopCookCommand{}
 	_, _, err := client.SendCommand(cookerID, command)
 	return err
 }

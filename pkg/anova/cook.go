@@ -31,7 +31,7 @@ func (cook *Cook) Start(oven *Oven) error {
 	for _, stage := range cook.Stages {
 		stage.cook = cook
 	}
-	return oven.StartCook(cook.Stages)
+	return oven.StartCook(cook.id, cook.Stages)
 }
 
 //TODO fix; doesn't seem to do anything currently. maybe we need to use the set_* methods?

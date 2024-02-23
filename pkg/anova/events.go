@@ -1,6 +1,8 @@
 package anova
 
-import "go-apo/anova/dto"
+import (
+	"go-apo/pkg/anova/dto"
+)
 
 type Event interface {
 	isEvent()

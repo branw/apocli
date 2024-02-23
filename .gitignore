@@ -1,1 +1,4 @@
 **/.idea
+
+/bin/apocli
+/bin/urlhandler/ApoCliUrlHandler.app/Contents/ApoCliUrlHandler

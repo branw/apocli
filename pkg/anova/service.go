@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/r3labs/diff/v3"
-	"go-apo/anova/dto"
+	"go-apo/pkg/anova/dto"
 	"log/slog"
 	"reflect"
 	"strings"

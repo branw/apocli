@@ -40,6 +40,10 @@ func CelsiusToFahrenheit(celsius float64) float64 {
 	return math.Round(1.8*celsius + 32)
 }
 
+func FahrenheitToCelsius(fahrenheit float64) float64 {
+	return math.Round((fahrenheit - 32) * 5.0 / 9.0)
+}
+
 func NewTemperatureFromCelsius(celsius float64) Temperature {
 	// The app uses Celsius, then calculates the Fahrenheit value. It's unclear
 	// what would happen if these values diverged from each other.
