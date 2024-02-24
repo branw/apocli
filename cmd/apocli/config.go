@@ -1,9 +1,9 @@
 package main
 
 import (
+	"apocli/pkg/apocli"
 	"fmt"
 	"github.com/iancoleman/strcase"
-	"go-apo/pkg/apocli"
 	"reflect"
 	"strings"
 )

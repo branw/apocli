@@ -1,10 +1,10 @@
 package anova
 
 import (
+	"apocli/pkg/anova/dto"
 	"errors"
 	"fmt"
 	"github.com/r3labs/diff/v3"
-	"go-apo/pkg/anova/dto"
 	"log/slog"
 	"reflect"
 	"strings"

@@ -1,6 +1,7 @@
 package anova
 
 import (
+	"apocli/pkg/anova/dto"
 	"bytes"
 	"encoding/json"
 	"errors"
@@ -8,7 +9,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/xeipuuv/gojsonschema"
-	"go-apo/pkg/anova/dto"
 	"io"
 	"log/slog"
 	"net/http"

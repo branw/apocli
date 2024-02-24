@@ -1,10 +1,10 @@
 package apocli
 
 import (
+	"apocli/pkg/anova"
 	"fmt"
 	"github.com/BurntSushi/toml"
 	"github.com/kirsle/configdir"
-	"go-apo/pkg/anova"
 	"os"
 	"path/filepath"
 )

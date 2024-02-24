@@ -1,7 +1,7 @@
 package anova
 
 import (
-	"go-apo/pkg/anova/dto"
+	"apocli/pkg/anova/dto"
 	"log/slog"
 	"math"
 	"time"

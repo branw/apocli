@@ -1,4 +1,4 @@
-module go-apo
+module apocli
 
 go 1.21
 

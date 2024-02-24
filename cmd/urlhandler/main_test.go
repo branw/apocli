@@ -1,8 +1,8 @@
 package main
 
 import (
+	"apocli/pkg/anova"
 	"github.com/stretchr/testify/assert"
-	"go-apo/pkg/anova"
 	"net/url"
 	"testing"
 	"time"

@@ -8,12 +8,12 @@ package main
 import "C"
 
 import (
+	"apocli/pkg/anova"
+	"apocli/pkg/anova/dto"
+	"apocli/pkg/apocli"
 	"errors"
 	"fmt"
 	"github.com/gorilla/schema"
-	"go-apo/pkg/anova"
-	"go-apo/pkg/anova/dto"
-	"go-apo/pkg/apocli"
 	"net/url"
 	"os"
 	"regexp"

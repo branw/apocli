@@ -1,10 +1,10 @@
 package main
 
 import (
+	"apocli/pkg/apocli"
 	"github.com/alecthomas/kong"
 	"github.com/lmittmann/tint"
 	"github.com/mattn/go-isatty"
-	"go-apo/pkg/apocli"
 	"log/slog"
 	"os"
 	"time"
