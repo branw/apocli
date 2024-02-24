@@ -1,7 +1,7 @@
 package anova
 
 import (
-	dto2 "go-apo/pkg/anova/dto"
+	"go-apo/pkg/anova/dto"
 	"log/slog"
 	"math"
 	"time"
@@ -83,7 +83,7 @@ func NewProbeCelsius(temperature float64) *Probe {
 }
 
 func NewProbeFahrenheit(temperature float64) *Probe {
-	return NewProbeCelsius(dto2.FahrenheitToCelsius(temperature))
+	return NewProbeCelsius(dto.FahrenheitToCelsius(temperature))
 }
 
 func (probe *Probe) isStageEndCondition() {}
@@ -306,60 +306,60 @@ var (
 	probeAdded *bool = boolToPtr(true)
 )
 
-func stageRackPositionToPtr(value dto2.StageRackPosition) *dto2.StageRackPosition {
+func stageRackPositionToPtr(value dto.StageRackPosition) *dto.StageRackPosition {
 	v := value
 	return &v
 }
 
 // toDto converts a stage into one or more DTO stages. This is necessary to support timers
-func (stage *CookStage) toDto() []dto2.CookingStage {
+func (stage *CookStage) toDto() []dto.CookingStage {
 	description := "desc"
-	cookStage := dto2.CookingStage{
+	cookStage := dto.CookingStage{
 		StepType: "stage",
 		ID:       stage.cookStageId,
-		Type:     dto2.StageTypeCook,
+		Type:     dto.StageTypeCook,
 		// Updated below
 		UserActionRequired: false,
 
-		Fan: &dto2.StageFan{Speed: int(stage.FanSpeed)},
-		HeatingElements: &dto2.StageHeatingElements{
-			Top:    dto2.HeatingElementSetting{On: stage.HeatingElements.Top},
-			Rear:   dto2.HeatingElementSetting{On: stage.HeatingElements.Rear},
-			Bottom: dto2.HeatingElementSetting{On: stage.HeatingElements.Bottom},
+		Fan: &dto.StageFan{Speed: int(stage.FanSpeed)},
+		HeatingElements: &dto.StageHeatingElements{
+			Top:    dto.HeatingElementSetting{On: stage.HeatingElements.Top},
+			Rear:   dto.HeatingElementSetting{On: stage.HeatingElements.Rear},
+			Bottom: dto.HeatingElementSetting{On: stage.HeatingElements.Bottom},
 		},
-		TemperatureBulbs: &dto2.StageTemperatureBulbs{
-			Mode: dto2.TemperatureBulbsMode(stage.TemperatureSetpoint.Mode),
+		TemperatureBulbs: &dto.StageTemperatureBulbs{
+			Mode: dto.TemperatureBulbsMode(stage.TemperatureSetpoint.Mode),
 			// Rest populated below
 		},
 		//TODO when is this ever not false?
-		Vent: &dto2.StageVent{Open: false},
+		Vent: &dto.StageVent{Open: false},
 
-		RackPosition: stageRackPositionToPtr(dto2.StageRackPosition(stage.RackPosition)),
+		RackPosition: stageRackPositionToPtr(dto.StageRackPosition(stage.RackPosition)),
 
-		Title:       dto2.NewTitle("foo bar"),
+		Title:       dto.NewTitle("foo bar"),
 		Description: &description,
 	}
 
-	setpointTemperature := dto2.NewTemperatureFromCelsius(stage.TemperatureSetpoint.TemperatureCelsius)
+	setpointTemperature := dto.NewTemperatureFromCelsius(stage.TemperatureSetpoint.TemperatureCelsius)
 	switch stage.TemperatureSetpoint.Mode {
 	case TemperatureModeDry:
-		cookStage.TemperatureBulbs.Dry = &dto2.TemperatureSetting{Setpoint: setpointTemperature}
+		cookStage.TemperatureBulbs.Dry = &dto.TemperatureSetting{Setpoint: setpointTemperature}
 
 		if stage.SteamPercentage != nil {
-			cookStage.SteamGenerators = &dto2.StageSteamGenerators{
-				Mode: dto2.SteamGeneratorModeSteamPercentage,
-				SteamPercentage: &dto2.SteamSetting{
+			cookStage.SteamGenerators = &dto.StageSteamGenerators{
+				Mode: dto.SteamGeneratorModeSteamPercentage,
+				SteamPercentage: &dto.SteamSetting{
 					Setpoint: int(*stage.SteamPercentage),
 				},
 			}
 		}
 	case TemperatureModeWet:
-		cookStage.TemperatureBulbs.Wet = &dto2.TemperatureSetting{Setpoint: setpointTemperature}
+		cookStage.TemperatureBulbs.Wet = &dto.TemperatureSetting{Setpoint: setpointTemperature}
 
 		if stage.SteamPercentage != nil {
-			cookStage.SteamGenerators = &dto2.StageSteamGenerators{
-				Mode: dto2.SteamGeneratorModeRelativeHumidity,
-				RelativeHumidity: &dto2.SteamSetting{
+			cookStage.SteamGenerators = &dto.StageSteamGenerators{
+				Mode: dto.SteamGeneratorModeRelativeHumidity,
+				RelativeHumidity: &dto.SteamSetting{
 					Setpoint: int(*stage.SteamPercentage),
 				},
 			}
@@ -380,32 +380,32 @@ func (stage *CookStage) toDto() []dto2.CookingStage {
 			}
 
 			cookStage.TimerAdded = timerAdded
-			cookStage.Timer = &dto2.StageTimer{Initial: terminator.DurationSeconds}
+			cookStage.Timer = &dto.StageTimer{Initial: terminator.DurationSeconds}
 
 		case *Probe:
 			cookStage.ProbeAdded = probeAdded
-			cookStage.TemperatureProbe = &dto2.StageTemperatureProbe{
-				Setpoint: dto2.NewTemperatureFromCelsius(terminator.TemperatureCelsius),
+			cookStage.TemperatureProbe = &dto.StageTemperatureProbe{
+				Setpoint: dto.NewTemperatureFromCelsius(terminator.TemperatureCelsius),
 			}
 		}
 	}
 
 	if !needsPreheat {
-		return []dto2.CookingStage{cookStage}
+		return []dto.CookingStage{cookStage}
 	}
 
 	preheatStage := cookStage
 	preheatStage.ID = stage.preheatStageId
-	preheatStage.Type = dto2.StageTypePreheat
+	preheatStage.Type = dto.StageTypePreheat
 	preheatStage.UserActionRequired = false
 
-	return []dto2.CookingStage{preheatStage, cookStage}
+	return []dto.CookingStage{preheatStage, cookStage}
 }
 
 type CookStages []*CookStage
 
-func (stages CookStages) ToDto() []dto2.CookingStage {
-	dtoStages := make([]dto2.CookingStage, 0)
+func (stages CookStages) ToDto() []dto.CookingStage {
+	dtoStages := make([]dto.CookingStage, 0)
 	for _, stage := range stages {
 		dtoStages = append(dtoStages, stage.toDto()...)
 	}
