@@ -6,7 +6,7 @@ require (
 	github.com/BurntSushi/toml v1.3.2
 	github.com/alecthomas/kong v0.8.1
 	github.com/google/uuid v1.6.0
-	github.com/gorilla/schema v1.2.1
+	github.com/gorilla/schema v1.4.1
 	github.com/gorilla/websocket v1.5.1
 	github.com/iancoleman/strcase v0.3.0
 	github.com/kirsle/configdir v0.0.0-20170128060238-e45d2f54772f
